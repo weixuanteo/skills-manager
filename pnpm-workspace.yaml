@@ -1,0 +1,8 @@
+# Only esbuild (native binary resolver) may run a postinstall script; everything else is blocked.
+allowBuilds:
+  esbuild: true
+# Pin rolldown (vite's bundler) to a release with community soak time, per the dependency audit.
+overrides:
+  rolldown: 1.2.7
+minimumReleaseAgeExclude:
+  - lucide-react@1.43.0

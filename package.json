@@ -1,0 +1,42 @@
+{
+  "name": "skills-manager",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local web app to browse, inspect, update and remove agent skills (.agents/skills, .claude/skills, .codex/skills, ...)",
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,magenta \"tsx watch server/index.ts\" \"vite\"",
+    "build": "tsc --noEmit -p tsconfig.json && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.1.1",
+    "highlight.js": "11.12.0",
+    "hono": "4.13.7",
+    "lucide-react": "1.43.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-markdown": "10.1.0",
+    "rehype-highlight": "7.0.2",
+    "remark-gfm": "4.0.1",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/typography": "0.5.20",
+    "@tailwindcss/vite": "4.3.3",
+    "@types/node": "26.5.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.7",
+    "@vitejs/plugin-react": "6.1.1",
+    "concurrently": "10.0.5",
+    "tailwindcss": "4.3.3",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "packageManager": "pnpm@12.3.4"
+}
