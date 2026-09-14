@@ -21,7 +21,7 @@ export function slugify(text: string): string {
   )
 }
 
-/** Collect the headings under `root` in document order, assigning stable unique ids. */
+/** Assigns IDs to the rendered headings. */
 export function collectHeadings(root: HTMLElement): Heading[] {
   const seen = new Map<string, number>()
   const out: Heading[] = []
@@ -38,7 +38,7 @@ export function collectHeadings(root: HTMLElement): Heading[] {
   return out
 }
 
-/** Nest a flat heading list by level. Skipped levels (h1 → h3) nest under the nearest shallower heading. */
+/** Skipped levels nest under the nearest shallower heading. */
 export function buildTree(headings: Heading[]): OutlineNode[] {
   const roots: OutlineNode[] = []
   const stack: OutlineNode[] = []

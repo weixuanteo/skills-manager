@@ -35,13 +35,13 @@ export interface Command {
 }
 
 export interface SkillLocation {
-  /** The path inside the skills directory (may be a symlink). */
+  /** Installed path before resolving symlinks. */
   path: string
   agent: AgentId
   scope: Scope
   isSymlink: boolean
   linkTarget?: string
-  /** The scan root this location was found under. */
+  /** Directory scanned to discover this location. */
   root: string
 }
 
@@ -60,7 +60,7 @@ export interface GitInfo {
   branch?: string
   head?: string
   upstream?: string
-  /** Path of the skill inside the repo (relative). */
+  /** Relative to repoRoot. */
   subPath: string
 }
 
@@ -70,7 +70,7 @@ export interface NpmInfo {
   installedVersion?: string
   packageManager: 'npm' | 'pnpm' | 'yarn' | 'bun'
   global: boolean
-  /** Project root that owns the node_modules (for local installs). */
+  /** Project owning node_modules; absent for global installs. */
   projectRoot?: string
 }
 
@@ -103,7 +103,6 @@ export interface InstallInfo {
   claudePlugin?: ClaudePluginInfo
   removeCommands: Command[]
   updateCommands: Command[]
-  /** Whether the server can check for updates for this skill. */
   updateCheckable: boolean
   updateCheckHint?: string
 }

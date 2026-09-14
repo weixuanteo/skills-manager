@@ -6,9 +6,8 @@ import { CopyButton } from './CommandBlock'
 
 interface Props {
   source: string
-  /** Called when a relative link (to a file inside the skill) is clicked. */
   onOpenRelative?: (relPath: string) => void
-  /** Directory (relative to skill root) of the current markdown file, for resolving relative links. */
+  /** Current file's directory, relative to the skill root. */
   baseDir?: string
 }
 

@@ -13,9 +13,8 @@ import { exists, findUp, isWithin, readJson, run, shellQuote, tildify } from './
 export interface DetectContext {
   home: string
   npmGlobalRoots: string[]
-  /** lockfile path -> parsed lockfile (or null if unreadable) */
+  /** Null caches a missing or unreadable lockfile. */
   lockCache: Map<string, SkillsLockfile | null>
-  /** repoRoot -> git info (without subPath) */
   gitCache: Map<string, Omit<GitInfo, 'subPath'> | null>
   claudePlugins: ClaudePluginInfo[]
 }
@@ -70,8 +69,6 @@ async function loadClaudePlugins(home: string): Promise<ClaudePluginInfo[]> {
   return out
 }
 
-// ---------- git ----------
-
 async function gitInfoFor(repoRoot: string, ctx: DetectContext): Promise<Omit<GitInfo, 'subPath'> | null> {
   if (ctx.gitCache.has(repoRoot)) return ctx.gitCache.get(repoRoot)!
   const [remotes, branch, head, upstream] = await Promise.all([
@@ -109,8 +106,6 @@ async function findGitRoot(start: string): Promise<string | undefined> {
   return findUp(start, async (dir) => exists(path.join(dir, '.git')))
 }
 
-// ---------- npm ----------
-
 async function detectNpm(realPath: string, ctx: DetectContext): Promise<NpmInfo | undefined> {
   const segs = realPath.split(path.sep)
   const idx = segs.lastIndexOf('node_modules')
@@ -143,8 +138,6 @@ async function detectNpm(realPath: string, ctx: DetectContext): Promise<NpmInfo 
   return { packageName, packageRoot, installedVersion: pkg?.version, packageManager, global, projectRoot }
 }
 
-// ---------- Vercel `skills` CLI ----------
-
 async function loadLock(file: string, ctx: DetectContext): Promise<SkillsLockfile | null> {
   if (ctx.lockCache.has(file)) return ctx.lockCache.get(file)!
   const data = (await readJson<SkillsLockfile>(file)) ?? null
@@ -153,7 +146,7 @@ async function loadLock(file: string, ctx: DetectContext): Promise<SkillsLockfil
 }
 
 async function detectSkillsCli(realPath: string, locations: SkillLocation[], ctx: DetectContext): Promise<SkillsCliInfo | undefined> {
-  // Candidate "agents dirs": any path segment ".agents" above the real path or above any location.
+  // Check lockfiles at both the source and installed locations.
   const candidates = new Set<string>()
   const consider = (p: string) => {
     const m = /^(.*)\/\.agents\/skills(\/|$)/.exec(p)
@@ -202,8 +195,6 @@ async function detectSkillsCli(realPath: string, locations: SkillLocation[], ctx
   return undefined
 }
 
-// ---------- main ----------
-
 export async function detectInstall(realPath: string, locations: SkillLocation[], ctx: DetectContext): Promise<InstallInfo> {
   const q = shellQuote
   const home = ctx.home
@@ -217,7 +208,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     note: 'Removes only the symlink. The target directory is left untouched.',
   }))
 
-  // 1. Codex built-in system skills
   if (/\/\.codex\/skills\/\.system(\/|$)/.test(realPath) || locations.some((l) => /\/\.codex\/skills\/\.system\//.test(l.path))) {
     return {
       method: 'codex-system',
@@ -241,7 +231,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 2. Claude Code plugins
   const plugin = ctx.claudePlugins.find((p) => isWithin(p.installPath, realPath))
   if (plugin || isWithin(path.join(home, '.claude', 'plugins'), realPath)) {
     const ref = plugin ? `${plugin.plugin}${plugin.marketplace ? '@' + plugin.marketplace : ''}` : path.basename(path.dirname(path.dirname(realPath)))
@@ -266,7 +255,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 3. npm / pnpm / yarn / bun packages
   const npm = await detectNpm(realPath, ctx)
   if (npm) {
     const pm = npm.packageManager
@@ -288,7 +276,7 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     const cd = !g && npm.projectRoot ? `cd ${t(npm.projectRoot)} && ` : ''
     const removeCommands: Command[] = [...removeLinks]
     if (isNpx) {
-      // npx keeps each fetched package under ~/.npm/_npx/<hash>/node_modules/...; the <hash> directory is the cache entry.
+      // Remove the whole _npx/<hash> cache entry, not just its package directory.
       const entryStart = realPath.indexOf('/_npx/') + '/_npx/'.length
       const entryEnd = realPath.indexOf('/', entryStart)
       const npxCacheDir = entryEnd === -1 ? realPath : realPath.slice(0, entryEnd)
@@ -322,7 +310,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 4. Vercel `skills` CLI (npx skills add ...)
   const cli = await detectSkillsCli(realPath, locations, ctx)
   if (cli) {
     const name = path.basename(realPath)
@@ -348,7 +335,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 5. git
   const repoRoot = await findGitRoot(realPath)
   const gitBase = repoRoot ? await gitInfoFor(repoRoot, ctx) : null
   if (repoRoot && gitBase) {
@@ -362,7 +348,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
       : []
     const where = `${tildify(repoRoot, home)}${gitBase.remoteUrl ? ` (${gitBase.remoteUrl})` : ''}`
     if (subPath === '' && dirLocs.length > 0) {
-      // Cloned straight into a skills directory.
       return {
         method: 'git-clone',
         label: 'git clone',
@@ -397,7 +382,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
         updateCheckHint: 'Compares the local HEAD of the source repo with its remote branch via git ls-remote (no fetch).',
       }
     }
-    // Plain directory that happens to live inside a git repo (e.g. project-level skill committed to the project).
     return {
       method: 'manual',
       label: 'in-repo directory',
@@ -416,7 +400,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 6. plain symlink to somewhere outside git
   if (symlinkLocs.length > 0 && dirLocs.length === 0) {
     return {
       method: 'symlink',
@@ -432,7 +415,6 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     }
   }
 
-  // 7. manual copy
   return {
     method: 'manual',
     label: 'manual copy',

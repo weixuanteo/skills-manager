@@ -141,7 +141,6 @@ app.put('/api/config', async (c) => {
   return c.json({ projectRoots: resolved, invalid })
 })
 
-// Production: serve the built client.
 const dist = path.join(ROOT, 'dist')
 if (process.env.NODE_ENV === 'production' || (await isDir(dist))) {
   app.use('/*', serveStatic({ root: path.relative(process.cwd(), dist) || '.' }))

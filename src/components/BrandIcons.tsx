@@ -4,7 +4,6 @@ import type { AgentId } from '@shared/types'
 
 type IconProps = SVGProps<SVGSVGElement> & { className?: string }
 
-/** Anthropic's Claude "sunburst" mark. */
 export function ClaudeIcon({ className = 'h-3.5 w-3.5', ...rest }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className} {...rest}>
@@ -22,7 +21,6 @@ export function CodexIcon({ className = 'h-3.5 w-3.5', ...rest }: IconProps) {
   )
 }
 
-/** Claude mark with a small puzzle-piece overlay, for skills that ship inside a Claude Code plugin. */
 export function ClaudePluginIcon({ className = 'h-3.5 w-3.5' }: { className?: string }) {
   return (
     <span className={`relative inline-flex shrink-0 ${className}`} aria-hidden="true">

@@ -17,7 +17,6 @@ export function Outline({ headings, activeId, onSelect, onClose }: Props) {
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement | null>(null)
 
-  // A new document means the old collapse state and filter no longer apply.
   useEffect(() => {
     setCollapsed(new Set())
     setQuery('')
@@ -42,7 +41,6 @@ export function Outline({ headings, activeId, onSelect, onClose }: Props) {
   }, [tree])
 
   const q = query.trim().toLowerCase()
-  // When filtering, keep a node if it or any descendant matches, and force everything open.
   const visible = useMemo(() => {
     if (!q) return tree
     const filter = (nodes: OutlineNode[]): OutlineNode[] =>

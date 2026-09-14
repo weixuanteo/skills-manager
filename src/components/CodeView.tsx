@@ -6,7 +6,6 @@ export function CodeView({ code, language }: { code: string; language: string })
     try {
       if (language && language !== 'plaintext' && hljs.getLanguage(language)) return hljs.highlight(code, { language }).value
     } catch {
-      /* fall through */
     }
     return escapeHtml(code)
   }, [code, language])

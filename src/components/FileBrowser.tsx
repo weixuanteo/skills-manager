@@ -49,7 +49,6 @@ export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selec
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    // Expand parents of the selected path.
     const parts = selected.split('/')
     if (parts.length > 1) {
       setOpenDirs((prev) => {

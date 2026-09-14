@@ -18,7 +18,6 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'manage', label: 'Manage', icon: <Settings2 className="h-4 w-4" /> },
 ]
 
-/** Compact: pill tabs for the single-row reading-mode header, labels hidden on narrow panes. Otherwise underline tabs. */
 function TabBar({ tab, setTab, compact }: { tab: Tab; setTab: (t: Tab) => void; compact?: boolean }) {
   return (
     <nav className={compact ? 'flex items-center gap-0.5' : 'mt-2 -mb-px flex items-center gap-1'}>
@@ -49,7 +48,6 @@ interface Props {
   onCheck: () => void
   tab: Tab
   setTab: (t: Tab) => void
-  /** Reading mode: the list and sidebar are hidden and the header collapses to a single row. */
   focus: boolean
   setFocus: (v: boolean) => void
 }

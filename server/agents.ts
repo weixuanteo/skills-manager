@@ -3,9 +3,8 @@ import type { AgentId } from '../shared/types.ts'
 export interface AgentDef {
   id: AgentId
   label: string
-  /** Skill directories relative to a root (home dir for global, project dir for project scope). */
+  /** Relative to home for global scans, or the project directory for project scans. */
   dirs: string[]
-  /** Only meaningful at project scope. */
   projectOnly?: boolean
 }
 

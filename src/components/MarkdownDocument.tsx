@@ -6,28 +6,25 @@ import { Outline } from './Outline'
 
 const OUTLINE_KEY = 'sm-outline'
 const SCROLL_PAD = 16
-/** Below this pane width the outline floats over the text instead of taking a column of its own. */
+/** Minimum pane width for an outline column. */
 const INLINE_OUTLINE_MIN = 1024
 
 interface Props {
   source: string
   baseDir?: string
   onOpenRelative?: (relPath: string) => void
-  /** Rendered inside the scroll area, above the markdown (e.g. the frontmatter box). */
+  /** Scrolls with the document. */
   header?: ReactNode
 }
 
-/**
- * Scrollable markdown view with a heading outline beside it. Headings are read back from the
- * rendered DOM so the outline always matches what is on screen, whatever the markdown syntax.
- */
+/** Read headings from the rendered DOM so the outline matches the document. */
 export function MarkdownDocument({ source, baseDir, onOpenRelative, header }: Props) {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const mdRef = useRef<HTMLDivElement | null>(null)
   const [headings, setHeadings] = useState<Heading[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
   const [open, setOpen] = useState(() => localStorage.getItem(OUTLINE_KEY) !== '0')
-  // Narrow panes: the outline is a popover opened on demand (never remembered, since it covers the text).
+  // Don't persist the popover: it covers the document.
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [wide, setWide] = useState(true)
   const rootRef = useRef<HTMLDivElement | null>(null)
@@ -55,7 +52,6 @@ export function MarkdownDocument({ source, baseDir, onOpenRelative, header }: Pr
     scrollRef.current?.scrollTo({ top: 0 })
   }, [source])
 
-  // Track which heading is at the top of the viewport.
   useEffect(() => {
     const el = scrollRef.current
     if (!el || !headings.length) return

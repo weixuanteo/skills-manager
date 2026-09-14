@@ -117,7 +117,6 @@
   }
 }
 
-/* Markdown prose overrides */
 .md {
   @apply prose prose-zinc dark:prose-invert max-w-none prose-headings:scroll-mt-20 prose-headings:font-semibold
     prose-a:text-accent-600 dark:prose-a:text-accent-300 prose-a:no-underline hover:prose-a:underline
@@ -138,7 +137,7 @@
   @apply mr-2 accent-accent-600;
 }
 
-/* highlight.js theme driven by CSS variables so it follows the app theme */
+/* Share the app theme with syntax highlighting. */
 .hljs {
   color: var(--fg);
   background: transparent;

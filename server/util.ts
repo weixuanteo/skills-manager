@@ -82,7 +82,6 @@ export function parseFrontmatter(src: string): Frontmatter {
   return { data, body }
 }
 
-/** Walk up from `start` until `predicate` matches a directory; returns that directory. */
 export async function findUp(start: string, predicate: (dir: string) => Promise<boolean>): Promise<string | undefined> {
   let dir = path.resolve(start)
   for (;;) {

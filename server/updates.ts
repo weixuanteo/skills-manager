@@ -8,7 +8,6 @@ const TTL_MS = 5 * 60 * 1000
 const cache = new Map<string, { at: number; value: unknown }>()
 const inflight = new Map<string, Promise<unknown>>()
 
-/** Caches `fn`'s result under `key` for the TTL and shares one in-flight call between concurrent callers. */
 function lookup<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const c = cache.get(key)
   if (c && Date.now() - c.at < TTL_MS) return Promise.resolve(c.value as T)
@@ -33,7 +32,7 @@ async function checkGit(skill: Skill): Promise<Status> {
   if (!remote || !branch || branch === 'HEAD') {
     return { state: 'unsupported', message: 'Detached HEAD or no remote configured.', checkedAt: now() }
   }
-  // The key includes the checkout, so the whole status is local to it and can be cached as one.
+  // Git statuses can be cached per checkout.
   return lookup<Status>(`git:${git.repoRoot}:${remote}:${branch}`, async () => {
     const ls = await run('git', ['-C', git.repoRoot, 'ls-remote', '--heads', remote, branch], { timeoutMs: 20000 })
     if (!ls.ok) {
@@ -82,7 +81,6 @@ async function checkNpm(skill: Skill): Promise<Status> {
   return { state: 'update-available', current, latest, message: `Version ${latest} is available.`, checkedAt: now() }
 }
 
-/** SemVer precedence of `a` relative to `b`, or undefined when either is not a valid version. */
 function compareVersions(a: string, b: string): number | undefined {
   const va = validSemver(a, { loose: true })
   const vb = validSemver(b, { loose: true })
@@ -102,7 +100,7 @@ function parseGithubSource(cli: NonNullable<Skill['install']['skillsCli']>): { o
 }
 
 interface GithubUpstream {
-  /** Latest commit touching the skill path; absent when the path has no commits. */
+  /** Absent if no commits touch the skill path. */
   sha?: string
   date?: string
   error?: string

@@ -29,7 +29,7 @@ function npmSkill(id: string, packageName: string, installedVersion?: string): S
   return skill(id, { method: 'npm', npm: { packageName, packageRoot: `/tmp/${id}`, installedVersion, packageManager: 'npm', global: true } })
 }
 
-// `npm view` is answered by a shim placed first on PATH: it logs its arguments and prints $NPM_SHIM_STDOUT.
+// Intercept npm through PATH so update checks never reach the registry.
 const shimDir = mkdtempSync(path.join(tmpdir(), 'npm-shim-'))
 const shimLog = path.join(shimDir, 'calls.log')
 writeFileSync(path.join(shimDir, 'npm'), `#!/bin/sh\necho "$@" >> "${shimLog}"\nprintf '%s\\n' "$NPM_SHIM_STDOUT"\n`)
@@ -62,7 +62,6 @@ describe('npm update checks', () => {
     assert.equal(older.current, '1.0.0')
     assert.equal(current.state, 'up-to-date')
     assert.equal(current.current, '2.0.0')
-    // A third check within the TTL is served from the cache and still gets its own status.
     const third = await checkUpdate(npmSkill('c', 'shared-pkg', '3.0.0'))
     assert.equal(npmCalls().length, 1)
     assert.equal(third.state, 'local-ahead')

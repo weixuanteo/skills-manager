@@ -36,7 +36,7 @@ async function listSkillDirs(root: string, depth = 0): Promise<{ dir: string; sk
   for (const e of entries) {
     if (SKIP_DIRS.has(e.name)) continue
     const full = path.join(root, e.name)
-    if (!(await isDir(full))) continue // also skips broken symlinks
+    if (!(await isDir(full))) continue
     const skillFile = await findSkillFile(full)
     if (skillFile) {
       out.push({ dir: full, skillFile })
@@ -70,7 +70,6 @@ async function buildTree(dir: string, rel = '', depth = 0, budget = { n: 0 }): P
         out.push({ name: e.name, path: relPath, type: 'file', size: st.size })
       }
     } catch {
-      /* ignore unreadable */
     }
   }
   out.sort((a, b) => (a.type === b.type ? 0 : a.type === 'dir' ? -1 : 1))
@@ -97,7 +96,6 @@ async function claudePluginRoots(home: string): Promise<RootDef[]> {
       roots.push({ path: p, agent: 'claude-plugin', scope: 'global', label })
     }
   }
-  // Walk cache/repos/marketplaces up to 4 levels looking for a "skills" dir.
   const walk = async (dir: string, depth: number) => {
     if (depth > 4) return
     let entries: import('node:fs').Dirent[]
@@ -152,9 +150,8 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
           isSymlink = lst.isSymbolicLink()
           if (isSymlink) linkTarget = await fs.readlink(f.dir)
         } catch {
-          /* ignore */
         }
-        // Also treat a directory whose ancestor within the root is a symlink as symlinked.
+        // A parent directory may be a symlink even when this directory is not.
         const realPath = await fs.realpath(f.dir)
         if (!isSymlink && realPath !== f.dir) {
           isSymlink = true
@@ -172,7 +169,6 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
         if (entry) entry.locations.push(loc)
         else byReal.set(realPath, { skillFile: await fs.realpath(f.skillFile), locations: [loc] })
       }
-      // Report broken symlinks in this root.
       try {
         for (const e of await fs.readdir(r.path, { withFileTypes: true })) {
           if (e.isSymbolicLink()) {
@@ -181,7 +177,6 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
           }
         }
       } catch {
-        /* ignore */
       }
     }
     roots.push({ path: r.path, agent: r.agent, scope: r.scope, exists: present, skillCount: count, label: r.label })
@@ -194,7 +189,6 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
       try {
         raw = await fs.readFile(skillFile, 'utf8')
       } catch {
-        /* ignore */
       }
       const fm = parseFrontmatter(raw)
       const dirName = path.basename(realPath)
@@ -208,7 +202,6 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
       try {
         lastModified = (await fs.stat(skillFile)).mtime
       } catch {
-        /* ignore */
       }
       const warnings: string[] = []
       if (!raw) warnings.push('SKILL.md could not be read.')

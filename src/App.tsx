@@ -11,14 +11,13 @@ import { api } from './lib/api'
 
 const HIDE_BUILTIN_KEY = 'sm-hide-builtin'
 const FOCUS_KEY = 'sm-focus'
-/** Below this viewport width the filter sidebar starts collapsed (13"–14" laptops); "[" brings it back. */
+/** Start with filters collapsed below this viewport width. */
 const SIDEBAR_AUTO_MIN = 1500
 const emptyFilters = (): Filters => ({
   agents: new Set(),
   scopes: new Set(),
   methods: new Set(),
   updates: new Set(),
-  // Codex's bundled skills are hidden by default; the user can switch them back on (remembered).
   hideBuiltIn: localStorage.getItem(HIDE_BUILTIN_KEY) !== '0',
 })
 
@@ -38,7 +37,6 @@ export default function App() {
     return t === 'files' || t === 'manage' ? t : 'readme'
   })
   const [rootsOpen, setRootsOpen] = useState(false)
-  // Reading mode: hide the filter sidebar and the skill list so the document gets the whole width.
   const [focus, setFocusState] = useState(() => localStorage.getItem(FOCUS_KEY) === '1')
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= SIDEBAR_AUTO_MIN)
   const searchRef = useRef<HTMLInputElement | null>(null)
@@ -48,7 +46,6 @@ export default function App() {
     localStorage.setItem(FOCUS_KEY, v ? '1' : '0')
   }, [])
 
-  // Reading mode hides the sidebar too, so toggling it from there means "leave reading mode and show it".
   const toggleSidebar = useCallback(() => {
     if (focus) {
       setFocus(false)
@@ -194,7 +191,6 @@ export default function App() {
         total={skills.length}
         updatesAvailable={updatesAvailable}
         inputRef={searchRef}
-        // Searching while in reading mode brings the list back so the results are visible.
         onSearchFocus={() => focus && setFocus(false)}
         sidebarOpen={sidebarOpen && !focus}
         onToggleSidebar={toggleSidebar}

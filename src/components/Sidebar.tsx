@@ -7,7 +7,7 @@ export interface Filters {
   scopes: Set<Scope>
   methods: Set<InstallMethod>
   updates: Set<UpdateState>
-  /** Hide skills bundled with the Codex CLI unless the "Codex built-in" method filter is selected. */
+  /** The explicit built-in method filter overrides this preference. */
   hideBuiltIn: boolean
 }
 
