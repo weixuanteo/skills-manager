@@ -4,7 +4,7 @@ import type { FileContent, FileEntry, Skill } from '@shared/types'
 import { api } from '../lib/api'
 import { formatBytes } from '../lib/format'
 import { CopyButton } from './CommandBlock'
-import { Markdown } from './Markdown'
+import { MarkdownDocument } from './MarkdownDocument'
 import { parseFrontmatterClient } from '../lib/frontmatter'
 import { CodeView } from './CodeView'
 
@@ -104,27 +104,24 @@ export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selec
           )}
           {file && !file.binary && <CopyButton text={file.content} className="h-6 w-6" />}
         </div>
-        <div className="flex-1 overflow-auto scroll-thin">
-          {loading && !file && (
-            <div className="p-6 text-sm text-[var(--fg-muted)] flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+        <div className="flex-1 min-h-0 flex flex-col">
+          {file && !file.binary && isMd && !raw ? (
+            <MarkdownDocument key={selected} source={parseFrontmatterClient(file.content).body} baseDir={baseDir} onOpenRelative={onSelect} />
+          ) : (
+            <div className="flex-1 min-h-0 overflow-auto scroll-thin">
+              {loading && !file && (
+                <div className="p-6 text-sm text-[var(--fg-muted)] flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+                </div>
+              )}
+              {error && <div className="p-6 text-sm text-red-600 dark:text-red-400">{error}</div>}
+              {file && file.binary && <div className="p-6 text-sm text-[var(--fg-muted)]">Binary file ({formatBytes(file.size)}), not displayed.</div>}
+              {file && !file.binary && (!isMd || raw) && <CodeView code={file.content} language={file.language} />}
             </div>
           )}
-          {error && <div className="p-6 text-sm text-red-600 dark:text-red-400">{error}</div>}
-          {file && file.binary && <div className="p-6 text-sm text-[var(--fg-muted)]">Binary file ({formatBytes(file.size)}), not displayed.</div>}
-          {file && !file.binary && isMd && !raw && (
-            <div className="p-6 max-w-4xl fade-in">
-              <MarkdownFile content={file.content} baseDir={baseDir} onOpen={onSelect} />
-            </div>
-          )}
-          {file && !file.binary && (!isMd || raw) && <CodeView code={file.content} language={file.language} />}
         </div>
       </section>
     </div>
   )
 }
 
-function MarkdownFile({ content, baseDir, onOpen }: { content: string; baseDir: string; onOpen: (p: string) => void }) {
-  const { body } = parseFrontmatterClient(content)
-  return <Markdown source={body} baseDir={baseDir} onOpenRelative={onOpen} />
-}

@@ -8,7 +8,7 @@ import { AgentBadge, MethodBadge, ScopeBadge, UpdateBadge } from './Badges'
 import { CopyButton } from './CommandBlock'
 import { FileBrowser } from './FileBrowser'
 import { ManagePanel } from './ManagePanel'
-import { Markdown } from './Markdown'
+import { MarkdownDocument } from './MarkdownDocument'
 
 export type Tab = 'readme' | 'files' | 'manage'
 
@@ -101,17 +101,23 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'readme' && (
-          <div className="h-full overflow-y-auto scroll-thin">
-            <div className="p-6 max-w-4xl">
-              {readmeError && (
-                <div className="surface p-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                  <FileWarning className="h-4 w-4" /> {readmeError}
-                </div>
-              )}
-              {readme == null && !readmeError && <div className="text-sm text-[var(--fg-muted)]">Loading…</div>}
-              {fm && (
-                <div className="fade-in">
-                  {fm.raw && (
+          <>
+            {(readmeError || (readme == null && !readmeError)) && (
+              <div className="p-6">
+                {readmeError && (
+                  <div className="surface p-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+                    <FileWarning className="h-4 w-4" /> {readmeError}
+                  </div>
+                )}
+                {readme == null && !readmeError && <div className="text-sm text-[var(--fg-muted)]">Loading…</div>}
+              </div>
+            )}
+            {fm && (
+              <MarkdownDocument
+                source={fm.body}
+                onOpenRelative={openRelative}
+                header={
+                  fm.raw ? (
                     <div className="surface mb-6 overflow-hidden">
                       <button type="button" onClick={() => setShowFm((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-hover)]">
                         <span>Frontmatter{fmEntries.length ? ` · ${fmEntries.map(([k]) => k).join(', ')}` : ''}</span>
@@ -119,12 +125,11 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
                       </button>
                       {showFm && <pre className="px-4 pb-3 text-[12px] font-mono text-[var(--fg-muted)] overflow-x-auto scroll-thin border-t border-[var(--border)] pt-3">{fm.raw}</pre>}
                     </div>
-                  )}
-                  <Markdown source={fm.body} onOpenRelative={openRelative} />
-                </div>
-              )}
-            </div>
-          </div>
+                  ) : null
+                }
+              />
+            )}
+          </>
         )}
         {tab === 'files' && <FileBrowser skill={skill} selected={selectedFile} onSelect={setSelectedFile} />}
         {tab === 'manage' && (
