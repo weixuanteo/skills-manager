@@ -20,6 +20,12 @@ interface Props {
   onManageRoots: () => void
 }
 
+function toggled<T>(set: Set<T>, value: T): Set<T> {
+  const next = new Set(set)
+  if (!next.delete(value)) next.add(value)
+  return next
+}
+
 function FilterGroup<T extends string>({ title, items, labels, active, counts, onToggle }: { title: string; items: T[]; labels: Record<T, string>; active: Set<T>; counts: Map<T, number>; onToggle: (v: T) => void }) {
   if (items.length === 0) return null
   return (
@@ -50,12 +56,6 @@ function FilterGroup<T extends string>({ title, items, labels, active, counts, o
 }
 
 export function Sidebar({ scan, filters, setFilters, counts, builtInCount, onManageRoots }: Props) {
-  const toggle = <K extends keyof Filters>(key: K, v: Filters[K] extends Set<infer U> ? U : never) => {
-    const next = new Set(filters[key] as Set<unknown>)
-    if (next.has(v)) next.delete(v)
-    else next.add(v)
-    setFilters({ ...filters, [key]: next })
-  }
   const agents = [...counts.agents.keys()].sort()
   const methods = [...counts.methods.keys()].sort()
   const updates = (['update-available', 'up-to-date', 'local-ahead', 'unknown', 'error', 'unsupported'] as UpdateState[]).filter((u) => counts.updates.has(u))
@@ -91,10 +91,10 @@ export function Sidebar({ scan, filters, setFilters, counts, builtInCount, onMan
             )}
           </div>
         )}
-        <FilterGroup title="Agent" items={agents} labels={AGENT_LABELS} active={filters.agents} counts={counts.agents} onToggle={(v) => toggle('agents', v)} />
-        <FilterGroup title="Scope" items={[...counts.scopes.keys()]} labels={{ global: 'Global (~)', project: 'Project' }} active={filters.scopes} counts={counts.scopes} onToggle={(v) => toggle('scopes', v)} />
-        <FilterGroup title="Install method" items={methods} labels={METHOD_LABELS} active={filters.methods} counts={counts.methods} onToggle={(v) => toggle('methods', v)} />
-        <FilterGroup title="Update status" items={updates} labels={UPDATE_LABELS} active={filters.updates} counts={counts.updates} onToggle={(v) => toggle('updates', v)} />
+        <FilterGroup title="Agent" items={agents} labels={AGENT_LABELS} active={filters.agents} counts={counts.agents} onToggle={(v) => setFilters({ ...filters, agents: toggled(filters.agents, v) })} />
+        <FilterGroup title="Scope" items={[...counts.scopes.keys()]} labels={{ global: 'Global (~)', project: 'Project' }} active={filters.scopes} counts={counts.scopes} onToggle={(v) => setFilters({ ...filters, scopes: toggled(filters.scopes, v) })} />
+        <FilterGroup title="Install method" items={methods} labels={METHOD_LABELS} active={filters.methods} counts={counts.methods} onToggle={(v) => setFilters({ ...filters, methods: toggled(filters.methods, v) })} />
+        <FilterGroup title="Update status" items={updates} labels={UPDATE_LABELS} active={filters.updates} counts={counts.updates} onToggle={(v) => setFilters({ ...filters, updates: toggled(filters.updates, v) })} />
 
         <div>
           <div className="px-2 mb-1.5 flex items-center justify-between">

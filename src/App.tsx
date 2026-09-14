@@ -101,7 +101,6 @@ export default function App() {
     }
   }, [])
 
-  // Keyboard: "/" focuses search, "\" toggles reading mode, "[" toggles the filter sidebar, Esc clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName

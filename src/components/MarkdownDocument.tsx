@@ -31,8 +31,7 @@ export function MarkdownDocument({ source, baseDir, onOpenRelative, header }: Pr
   const [popoverOpen, setPopoverOpen] = useState(false)
   const [wide, setWide] = useState(true)
   const rootRef = useRef<HTMLDivElement | null>(null)
-  // After an outline click the target may not be able to reach the top of the viewport (end of document),
-  // so keep it active until the user scrolls on their own.
+  // Keep the clicked heading active until user input; headings near the end cannot scroll to the top.
   const pinned = useRef<string | null>(null)
 
   const toggleOutline = (v: boolean) => {
@@ -110,7 +109,6 @@ export function MarkdownDocument({ source, baseDir, onOpenRelative, header }: Pr
     el.scrollTo({ top, behavior: 'smooth' })
   }, [])
 
-  // Esc closes the popover outline.
   useEffect(() => {
     if (!popoverOpen) return
     const onKey = (e: KeyboardEvent) => {

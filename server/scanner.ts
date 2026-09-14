@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import type { AgentId, FileEntry, ScanResult, ScanRoot, Scope, Skill, SkillLocation } from '../shared/types.ts'
-import { AGENTS, AGENT_LABELS } from './agents.ts'
+import { AGENTS } from './agents.ts'
 import { createDetectContext, detectInstall } from './detect.ts'
 import { exists, hashId, isDir, parseFrontmatter, tildify } from './util.ts'
 
@@ -251,5 +251,3 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
     durationMs: Date.now() - started,
   }
 }
-
-export { AGENT_LABELS }

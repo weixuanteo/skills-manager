@@ -8,7 +8,7 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
       const body = (await res.json()) as { error?: string }
       if (body.error) msg = body.error
     } catch {
-      /* ignore */
+      // Keep the HTTP status if the response isn't JSON.
     }
     throw new Error(msg)
   }

@@ -8,7 +8,8 @@
     "dev": "concurrently -k -n server,web -c blue,magenta \"tsx watch server/index.ts\" \"vite\"",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "start": "NODE_ENV=production tsx server/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test server/*.test.ts shared/*.test.ts"
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
@@ -20,6 +21,7 @@
     "react-markdown": "10.1.0",
     "rehype-highlight": "7.0.2",
     "remark-gfm": "4.0.1",
+    "semver": "7.8.5",
     "yaml": "2.9.0"
   },
   "devDependencies": {
@@ -28,6 +30,7 @@
     "@types/node": "26.5.0",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.7",
+    "@types/semver": "7.8.0",
     "@vitejs/plugin-react": "6.1.1",
     "concurrently": "10.0.5",
     "tailwindcss": "4.3.3",

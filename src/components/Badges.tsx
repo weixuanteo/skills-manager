@@ -1,12 +1,17 @@
 import type { AgentId, InstallMethod, UpdateState } from '@shared/types'
 import { AGENT_COLORS, AGENT_LABELS, METHOD_LABELS, UPDATE_COLORS, UPDATE_LABELS } from '../lib/format'
-import { ArrowUpCircle, CheckCircle2, CircleDashed, CircleHelp, GitBranch, Package, Puzzle, Link2, FolderOpen, Terminal, Sparkles, XCircle, Loader2, Folder } from 'lucide-react'
+import { ArrowUpCircle, CheckCircle2, CircleDashed, CircleHelp, GitBranch, Package, Puzzle, Link2, FolderOpen, Terminal, Sparkles, XCircle, Loader2, Folder, type LucideIcon } from 'lucide-react'
 import { brandIconFor } from './BrandIcons'
 
-/**
- * Agent tag. Agents with a brand mark (Claude Code, Codex, Claude plugin) render the mark instead of
- * a text pill: icon-only in compact rows, icon + label in the detail header. Everything else stays text.
- */
+const UPDATE_ICONS: Record<UpdateState, LucideIcon> = {
+  'up-to-date': CheckCircle2,
+  'update-available': ArrowUpCircle,
+  'local-ahead': ArrowUpCircle,
+  error: XCircle,
+  unsupported: CircleDashed,
+  unknown: CircleHelp,
+}
+
 export function AgentBadge({ agent, small }: { agent: AgentId; small?: boolean }) {
   const label = AGENT_LABELS[agent] ?? agent
   const Icon = brandIconFor(agent)
@@ -67,8 +72,7 @@ export function UpdateBadge({ state, loading, compact }: { state?: UpdateState; 
       </span>
     )
   if (!state) return null
-  const Icon =
-    state === 'up-to-date' ? CheckCircle2 : state === 'update-available' ? ArrowUpCircle : state === 'local-ahead' ? ArrowUpCircle : state === 'error' ? XCircle : state === 'unsupported' ? CircleDashed : CircleHelp
+  const Icon = UPDATE_ICONS[state]
   return (
     <span className={`chip border ${UPDATE_COLORS[state]}`} title={UPDATE_LABELS[state]}>
       <Icon className="h-3.5 w-3.5" /> {!compact && UPDATE_LABELS[state]}

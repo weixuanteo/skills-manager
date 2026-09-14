@@ -1,4 +1,3 @@
-import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import type {
   ClaudePluginInfo,
@@ -289,9 +288,13 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
     const cd = !g && npm.projectRoot ? `cd ${t(npm.projectRoot)} && ` : ''
     const removeCommands: Command[] = [...removeLinks]
     if (isNpx) {
+      // npx keeps each fetched package under ~/.npm/_npx/<hash>/node_modules/...; the <hash> directory is the cache entry.
+      const entryStart = realPath.indexOf('/_npx/') + '/_npx/'.length
+      const entryEnd = realPath.indexOf('/', entryStart)
+      const npxCacheDir = entryEnd === -1 ? realPath : realPath.slice(0, entryEnd)
       removeCommands.push({
         title: 'Clear this npx cache entry',
-        command: `rm -rf ${t(realPath.slice(0, realPath.indexOf('/_npx/') + 6) + realPath.slice(realPath.indexOf('/_npx/') + 6).split('/')[0])}`,
+        command: `rm -rf ${t(npxCacheDir)}`,
         note: 'The package was fetched by npx on demand; it will be re-downloaded the next time you run it.',
       })
     } else {

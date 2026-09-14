@@ -40,7 +40,6 @@ const BRAND_ICONS: Partial<Record<AgentId, (props: { className?: string }) => Re
   'claude-plugin': ClaudePluginIcon,
 }
 
-/** Returns the brand mark component for an agent, or undefined when we only have a text label. */
 export function brandIconFor(agent: AgentId) {
   return BRAND_ICONS[agent]
 }

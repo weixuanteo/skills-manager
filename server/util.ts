@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process'
 import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import { parse as parseYaml } from 'yaml'
+import { splitFrontmatter } from '../shared/frontmatter.ts'
 
 export interface ExecResult {
   ok: boolean
@@ -69,16 +70,16 @@ export interface Frontmatter {
 }
 
 export function parseFrontmatter(src: string): Frontmatter {
-  const m = /^﻿?---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(src)
-  if (!m) return { data: {}, body: src }
+  const { raw, body } = splitFrontmatter(src)
+  if (raw == null) return { data: {}, body }
   let data: Record<string, unknown> = {}
   try {
-    const parsed = parseYaml(m[1])
+    const parsed = parseYaml(raw)
     if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) data = parsed as Record<string, unknown>
   } catch {
     data = {}
   }
-  return { data, body: src.slice(m[0].length) }
+  return { data, body }
 }
 
 /** Walk up from `start` until `predicate` matches a directory; returns that directory. */

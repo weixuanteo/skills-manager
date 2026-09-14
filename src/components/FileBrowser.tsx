@@ -5,7 +5,7 @@ import { api } from '../lib/api'
 import { formatBytes } from '../lib/format'
 import { CopyButton } from './CommandBlock'
 import { MarkdownDocument } from './MarkdownDocument'
-import { parseFrontmatterClient } from '../lib/frontmatter'
+import { splitFrontmatter } from '@shared/frontmatter'
 import { CodeView } from './CodeView'
 
 function iconFor(e: FileEntry, open: boolean) {
@@ -106,7 +106,7 @@ export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selec
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
           {file && !file.binary && isMd && !raw ? (
-            <MarkdownDocument key={selected} source={parseFrontmatterClient(file.content).body} baseDir={baseDir} onOpenRelative={onSelect} />
+            <MarkdownDocument key={selected} source={splitFrontmatter(file.content).body} baseDir={baseDir} onOpenRelative={onSelect} />
           ) : (
             <div className="flex-1 min-h-0 overflow-auto scroll-thin">
               {loading && !file && (

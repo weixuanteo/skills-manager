@@ -60,7 +60,6 @@ export interface GitInfo {
   branch?: string
   head?: string
   upstream?: string
-  dirty?: boolean
   /** Path of the skill inside the repo (relative). */
   subPath: string
 }

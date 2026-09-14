@@ -25,8 +25,3 @@ export const AGENTS: AgentDef[] = [
   { id: 'roo', label: 'Roo Code', dirs: ['.roo/skills'] },
   { id: 'github', label: 'GitHub (.github)', dirs: ['.github/skills'], projectOnly: true },
 ]
-
-export const AGENT_LABELS: Record<AgentId, string> = Object.fromEntries(
-  AGENTS.map((a) => [a.id, a.label]),
-) as Record<AgentId, string>
-AGENT_LABELS['claude-plugin'] = 'Claude Code plugin'

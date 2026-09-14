@@ -1,28 +1,24 @@
-import path from 'node:path'
+import { compare as compareSemver, valid as validSemver } from 'semver'
 import type { Skill, UpdateStatus } from '../shared/types.ts'
 import { run } from './util.ts'
 
-const cache = new Map<string, { at: number; value: Omit<UpdateStatus, 'skillId'> }>()
+type Status = Omit<UpdateStatus, 'skillId'>
+
 const TTL_MS = 5 * 60 * 1000
+const cache = new Map<string, { at: number; value: unknown }>()
+const inflight = new Map<string, Promise<unknown>>()
 
-function cached(key: string): Omit<UpdateStatus, 'skillId'> | undefined {
+/** Caches `fn`'s result under `key` for the TTL and shares one in-flight call between concurrent callers. */
+function lookup<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const c = cache.get(key)
-  if (c && Date.now() - c.at < TTL_MS) return c.value
-  return undefined
-}
-function remember(key: string, value: Omit<UpdateStatus, 'skillId'>) {
-  cache.set(key, { at: Date.now(), value })
-  return value
-}
-
-const inflight = new Map<string, Promise<Omit<UpdateStatus, 'skillId'>>>()
-function dedupe(key: string, fn: () => Promise<Omit<UpdateStatus, 'skillId'>>) {
-  const c = cached(key)
-  if (c) return Promise.resolve(c)
+  if (c && Date.now() - c.at < TTL_MS) return Promise.resolve(c.value as T)
   const existing = inflight.get(key)
-  if (existing) return existing
+  if (existing) return existing as Promise<T>
   const p = fn()
-    .then((v) => remember(key, v))
+    .then((value) => {
+      cache.set(key, { at: Date.now(), value })
+      return value
+    })
     .finally(() => inflight.delete(key))
   inflight.set(key, p)
   return p
@@ -30,14 +26,15 @@ function dedupe(key: string, fn: () => Promise<Omit<UpdateStatus, 'skillId'>>) {
 
 const now = () => new Date().toISOString()
 
-async function checkGit(skill: Skill): Promise<Omit<UpdateStatus, 'skillId'>> {
+async function checkGit(skill: Skill): Promise<Status> {
   const git = skill.install.git!
   const branch = git.upstream?.includes('/') ? git.upstream.slice(git.upstream.indexOf('/') + 1) : git.branch
   const remote = git.remote
   if (!remote || !branch || branch === 'HEAD') {
     return { state: 'unsupported', message: 'Detached HEAD or no remote configured.', checkedAt: now() }
   }
-  return dedupe(`git:${git.repoRoot}:${remote}:${branch}`, async () => {
+  // The key includes the checkout, so the whole status is local to it and can be cached as one.
+  return lookup<Status>(`git:${git.repoRoot}:${remote}:${branch}`, async () => {
     const ls = await run('git', ['-C', git.repoRoot, 'ls-remote', '--heads', remote, branch], { timeoutMs: 20000 })
     if (!ls.ok) {
       return { state: 'error', message: `git ls-remote failed: ${ls.stderr.trim().split('\n')[0] || 'unknown error'}`, checkedAt: now() }
@@ -54,39 +51,43 @@ async function checkGit(skill: Skill): Promise<Omit<UpdateStatus, 'skillId'>> {
   })
 }
 
-async function checkNpm(skill: Skill): Promise<Omit<UpdateStatus, 'skillId'>> {
-  const npm = skill.install.npm!
-  return dedupe(`npm:${npm.packageName}`, async () => {
-    const r = await run('npm', ['view', npm.packageName, 'version', '--json'], { timeoutMs: 20000 })
-    if (!r.ok) return { state: 'error', message: `npm view failed: ${r.stderr.trim().split('\n')[0] || 'unknown error'}`, checkedAt: now() }
-    let latest: string | undefined
-    try {
-      const parsed = JSON.parse(r.stdout)
-      latest = Array.isArray(parsed) ? parsed[parsed.length - 1] : String(parsed)
-    } catch {
-      latest = r.stdout.trim().replace(/^"|"$/g, '')
-    }
-    const current = npm.installedVersion
-    if (!latest) return { state: 'unknown', current, message: 'Could not read the latest version from the registry.', checkedAt: now() }
-    if (!current) return { state: 'unknown', latest, message: 'Installed version unknown.', checkedAt: now() }
-    const cmp = compareSemver(current, latest)
-    if (cmp === 0) return { state: 'up-to-date', current, latest, message: 'Installed version is the latest.', checkedAt: now() }
-    if (cmp > 0) return { state: 'local-ahead', current, latest, message: 'Installed version is newer than the registry "latest" tag.', checkedAt: now() }
-    return { state: 'update-available', current, latest, message: `Version ${latest} is available.`, checkedAt: now() }
-  })
+interface NpmUpstream {
+  latest?: string
+  error?: string
 }
 
-function compareSemver(a: string, b: string): number {
-  const pa = a.replace(/^v/, '').split(/[.+-]/).map((x) => (isNaN(Number(x)) ? x : Number(x)))
-  const pb = b.replace(/^v/, '').split(/[.+-]/).map((x) => (isNaN(Number(x)) ? x : Number(x)))
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0
-    const y = pb[i] ?? 0
-    if (x === y) continue
-    if (typeof x === 'number' && typeof y === 'number') return x < y ? -1 : 1
-    return String(x) < String(y) ? -1 : 1
+async function fetchNpmLatest(packageName: string): Promise<NpmUpstream> {
+  const r = await run('npm', ['view', packageName, 'version', '--json'], { timeoutMs: 20000 })
+  if (!r.ok) return { error: `npm view failed: ${r.stderr.trim().split('\n')[0] || 'unknown error'}` }
+  try {
+    const parsed = JSON.parse(r.stdout)
+    return { latest: Array.isArray(parsed) ? parsed[parsed.length - 1] : String(parsed) }
+  } catch {
+    return { latest: r.stdout.trim().replace(/^"|"$/g, '') }
   }
-  return 0
+}
+
+async function checkNpm(skill: Skill): Promise<Status> {
+  const npm = skill.install.npm!
+  const upstream = await lookup(`npm:${npm.packageName}`, () => fetchNpmLatest(npm.packageName))
+  if (upstream.error) return { state: 'error', message: upstream.error, checkedAt: now() }
+  const { latest } = upstream
+  const current = npm.installedVersion
+  if (!latest) return { state: 'unknown', current, message: 'Could not read the latest version from the registry.', checkedAt: now() }
+  if (!current) return { state: 'unknown', latest, message: 'Installed version unknown.', checkedAt: now() }
+  const cmp = compareVersions(current, latest)
+  if (cmp === undefined) return { state: 'unknown', current, latest, message: `Cannot compare "${current}" with "${latest}": not valid semantic versions.`, checkedAt: now() }
+  if (cmp === 0) return { state: 'up-to-date', current, latest, message: 'Installed version is the latest.', checkedAt: now() }
+  if (cmp > 0) return { state: 'local-ahead', current, latest, message: 'Installed version is newer than the registry "latest" tag.', checkedAt: now() }
+  return { state: 'update-available', current, latest, message: `Version ${latest} is available.`, checkedAt: now() }
+}
+
+/** SemVer precedence of `a` relative to `b`, or undefined when either is not a valid version. */
+function compareVersions(a: string, b: string): number | undefined {
+  const va = validSemver(a, { loose: true })
+  const vb = validSemver(b, { loose: true })
+  if (!va || !vb) return undefined
+  return compareSemver(va, vb)
 }
 
 function parseGithubSource(cli: NonNullable<Skill['install']['skillsCli']>): { owner: string; repo: string; ref?: string } | undefined {
@@ -100,43 +101,55 @@ function parseGithubSource(cli: NonNullable<Skill['install']['skillsCli']>): { o
   return undefined
 }
 
-async function checkSkillsCli(skill: Skill): Promise<Omit<UpdateStatus, 'skillId'>> {
+interface GithubUpstream {
+  /** Latest commit touching the skill path; absent when the path has no commits. */
+  sha?: string
+  date?: string
+  error?: string
+}
+
+async function fetchLatestCommit(gh: { owner: string; repo: string; ref?: string }, skillPath: string): Promise<GithubUpstream> {
+  const url = new URL(`https://api.github.com/repos/${gh.owner}/${gh.repo}/commits`)
+  url.searchParams.set('per_page', '1')
+  if (skillPath) url.searchParams.set('path', skillPath)
+  if (gh.ref) url.searchParams.set('sha', gh.ref)
+  let res: Response
+  try {
+    res = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'skills-manager' }, signal: AbortSignal.timeout(15000) })
+  } catch (e) {
+    return { error: `GitHub request failed: ${(e as Error).message}` }
+  }
+  if (!res.ok) return { error: `GitHub API responded ${res.status}${res.status === 403 ? ' (rate limited?)' : ''}.` }
+  const data = (await res.json()) as { sha?: string; commit?: { committer?: { date?: string }; author?: { date?: string } } }[]
+  const latest = data[0]
+  if (!latest?.sha) return {}
+  return { sha: latest.sha, date: latest.commit?.committer?.date ?? latest.commit?.author?.date }
+}
+
+async function checkSkillsCli(skill: Skill): Promise<Status> {
   const cli = skill.install.skillsCli!
   const gh = parseGithubSource(cli)
   if (!gh) return { state: 'unsupported', message: `Cannot resolve "${cli.source ?? cli.sourceUrl}" to a GitHub repository. Run "npx skills check".`, checkedAt: now() }
   const skillPath = cli.skillPath ?? ''
-  return dedupe(`skills-cli:${gh.owner}/${gh.repo}:${skillPath}:${gh.ref ?? ''}`, async () => {
-    const url = new URL(`https://api.github.com/repos/${gh.owner}/${gh.repo}/commits`)
-    url.searchParams.set('per_page', '1')
-    if (skillPath) url.searchParams.set('path', skillPath)
-    if (gh.ref) url.searchParams.set('sha', gh.ref)
-    let res: Response
-    try {
-      res = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'skills-manager' }, signal: AbortSignal.timeout(15000) })
-    } catch (e) {
-      return { state: 'error', message: `GitHub request failed: ${(e as Error).message}`, checkedAt: now() }
+  const upstream = await lookup(`skills-cli:${gh.owner}/${gh.repo}:${skillPath}:${gh.ref ?? ''}`, () => fetchLatestCommit(gh, skillPath))
+  if (upstream.error) return { state: 'error', message: upstream.error, checkedAt: now() }
+  if (!upstream.sha) return { state: 'unknown', message: 'No commits found for this path upstream.', checkedAt: now() }
+  const { sha, date: latestDate } = upstream
+  const short = sha.slice(0, 7)
+  if (cli.hash && (cli.hash === sha || sha.startsWith(cli.hash))) {
+    return { state: 'up-to-date', current: cli.hash.slice(0, 7), latest: short, message: 'Lockfile hash matches the latest upstream commit.', checkedAt: now() }
+  }
+  const installed = cli.updatedAt ?? cli.installedAt
+  if (installed && latestDate) {
+    const iTime = Date.parse(installed)
+    const lTime = Date.parse(latestDate)
+    if (!isNaN(iTime) && !isNaN(lTime)) {
+      if (lTime > iTime)
+        return { state: 'update-available', current: installed.slice(0, 10), latest: `${short} (${latestDate.slice(0, 10)})`, message: 'Upstream changed after this skill was installed. Confirm with "npx skills check".', checkedAt: now() }
+      return { state: 'up-to-date', current: installed.slice(0, 10), latest: `${short} (${latestDate.slice(0, 10)})`, message: 'No upstream commits since installation.', checkedAt: now() }
     }
-    if (!res.ok) return { state: 'error', message: `GitHub API responded ${res.status}${res.status === 403 ? ' (rate limited?)' : ''}.`, checkedAt: now() }
-    const data = (await res.json()) as { sha?: string; commit?: { committer?: { date?: string }; author?: { date?: string } } }[]
-    const latest = data[0]
-    if (!latest?.sha) return { state: 'unknown', message: 'No commits found for this path upstream.', checkedAt: now() }
-    const latestDate = latest.commit?.committer?.date ?? latest.commit?.author?.date
-    const short = latest.sha.slice(0, 7)
-    if (cli.hash && (cli.hash === latest.sha || latest.sha.startsWith(cli.hash))) {
-      return { state: 'up-to-date', current: cli.hash.slice(0, 7), latest: short, message: 'Lockfile hash matches the latest upstream commit.', checkedAt: now() }
-    }
-    const installed = cli.updatedAt ?? cli.installedAt
-    if (installed && latestDate) {
-      const iTime = Date.parse(installed)
-      const lTime = Date.parse(latestDate)
-      if (!isNaN(iTime) && !isNaN(lTime)) {
-        if (lTime > iTime)
-          return { state: 'update-available', current: installed.slice(0, 10), latest: `${short} (${latestDate.slice(0, 10)})`, message: 'Upstream changed after this skill was installed. Confirm with "npx skills check".', checkedAt: now() }
-        return { state: 'up-to-date', current: installed.slice(0, 10), latest: `${short} (${latestDate.slice(0, 10)})`, message: 'No upstream commits since installation.', checkedAt: now() }
-      }
-    }
-    return { state: 'unknown', latest: short, message: 'Lockfile has no timestamp or hash to compare. Run "npx skills check".', checkedAt: now() }
-  })
+  }
+  return { state: 'unknown', latest: short, message: 'Lockfile has no timestamp or hash to compare. Run "npx skills check".', checkedAt: now() }
 }
 
 export async function checkUpdate(skill: Skill): Promise<UpdateStatus> {
@@ -165,5 +178,3 @@ export async function checkUpdate(skill: Skill): Promise<UpdateStatus> {
 export function clearUpdateCache() {
   cache.clear()
 }
-
-export const _internal = { compareSemver, parseGithubSource, path }
