@@ -1,11 +1,31 @@
 import type { AgentId, InstallMethod, UpdateState } from '@shared/types'
 import { AGENT_COLORS, AGENT_LABELS, METHOD_LABELS, UPDATE_COLORS, UPDATE_LABELS } from '../lib/format'
 import { ArrowUpCircle, CheckCircle2, CircleDashed, CircleHelp, GitBranch, Package, Puzzle, Link2, FolderOpen, Terminal, Sparkles, XCircle, Loader2, Folder } from 'lucide-react'
+import { brandIconFor } from './BrandIcons'
 
+/**
+ * Agent tag. Agents with a brand mark (Claude Code, Codex, Claude plugin) render the mark instead of
+ * a text pill: icon-only in compact rows, icon + label in the detail header. Everything else stays text.
+ */
 export function AgentBadge({ agent, small }: { agent: AgentId; small?: boolean }) {
+  const label = AGENT_LABELS[agent] ?? agent
+  const Icon = brandIconFor(agent)
+  if (Icon) {
+    return (
+      <span
+        className={`chip border ${AGENT_COLORS[agent]} ${small ? 'h-5 w-5 justify-center px-0' : 'gap-2 pl-2'}`}
+        title={label}
+        aria-label={label}
+        role="img"
+      >
+        <Icon className={small ? 'h-3 w-3' : 'h-3.5 w-3.5'} />
+        {!small && label}
+      </span>
+    )
+  }
   return (
     <span className={`chip border ${AGENT_COLORS[agent]} ${small ? 'h-5 px-1.5 text-[11px]' : ''}`}>
-      {AGENT_LABELS[agent] ?? agent}
+      {label}
     </span>
   )
 }

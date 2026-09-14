@@ -1,4 +1,4 @@
-import { Inbox, Loader2, TriangleAlert } from 'lucide-react'
+import { Inbox, Loader2, PanelLeftOpen, TriangleAlert } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { AgentId, InstallMethod, ScanResult, Scope, UpdateState, UpdateStatus } from '@shared/types'
 import { Header } from './components/Header'
@@ -10,6 +10,9 @@ import { useTheme } from './hooks/useTheme'
 import { api } from './lib/api'
 
 const HIDE_BUILTIN_KEY = 'sm-hide-builtin'
+const FOCUS_KEY = 'sm-focus'
+/** Below this viewport width the filter sidebar starts collapsed (13"–14" laptops); "[" brings it back. */
+const SIDEBAR_AUTO_MIN = 1500
 const emptyFilters = (): Filters => ({
   agents: new Set(),
   scopes: new Set(),
@@ -35,7 +38,25 @@ export default function App() {
     return t === 'files' || t === 'manage' ? t : 'readme'
   })
   const [rootsOpen, setRootsOpen] = useState(false)
+  // Reading mode: hide the filter sidebar and the skill list so the document gets the whole width.
+  const [focus, setFocusState] = useState(() => localStorage.getItem(FOCUS_KEY) === '1')
+  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth >= SIDEBAR_AUTO_MIN)
   const searchRef = useRef<HTMLInputElement | null>(null)
+
+  const setFocus = useCallback((v: boolean) => {
+    setFocusState(v)
+    localStorage.setItem(FOCUS_KEY, v ? '1' : '0')
+  }, [])
+
+  // Reading mode hides the sidebar too, so toggling it from there means "leave reading mode and show it".
+  const toggleSidebar = useCallback(() => {
+    if (focus) {
+      setFocus(false)
+      setSidebarOpen(true)
+    } else {
+      setSidebarOpen((v) => !v)
+    }
+  }, [focus, setFocus])
 
   const load = useCallback(async (refresh = false) => {
     setScanning(true)
@@ -80,21 +101,28 @@ export default function App() {
     }
   }, [])
 
-  // Keyboard: "/" focuses search, j/k navigate, Esc clears.
+  // Keyboard: "/" focuses search, "\" toggles reading mode, "[" toggles the filter sidebar, Esc clears.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName
       const typing = tag === 'INPUT' || tag === 'TEXTAREA'
+      if (e.metaKey || e.ctrlKey || e.altKey) return
       if (e.key === '/' && !typing) {
         e.preventDefault()
         searchRef.current?.focus()
+      } else if (e.key === '\\' && !typing) {
+        e.preventDefault()
+        setFocus(!focus)
+      } else if (e.key === '[' && !typing) {
+        e.preventDefault()
+        toggleSidebar()
       } else if (e.key === 'Escape' && typing) {
         (e.target as HTMLElement).blur()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [])
+  }, [focus, setFocus, toggleSidebar])
 
   const skills = scan?.skills ?? []
 
@@ -167,11 +195,17 @@ export default function App() {
         total={skills.length}
         updatesAvailable={updatesAvailable}
         inputRef={searchRef}
+        // Searching while in reading mode brings the list back so the results are visible.
+        onSearchFocus={() => focus && setFocus(false)}
+        sidebarOpen={sidebarOpen && !focus}
+        onToggleSidebar={toggleSidebar}
       />
       <div className="flex-1 flex min-h-0">
-        {scan && <Sidebar scan={scan} filters={filters} setFilters={setFilters} counts={counts} builtInCount={builtInCount} onManageRoots={() => setRootsOpen(true)} />}
+        {scan && sidebarOpen && !focus && (
+          <Sidebar scan={scan} filters={filters} setFilters={setFilters} counts={counts} builtInCount={builtInCount} onManageRoots={() => setRootsOpen(true)} />
+        )}
         <main className="flex-1 flex min-w-0">
-          <div className="w-[380px] shrink-0 border-r border-[var(--border)] overflow-y-auto scroll-thin bg-[var(--bg)]">
+          <div className={`w-[300px] xl:w-[340px] 2xl:w-[380px] shrink-0 border-r border-[var(--border)] overflow-y-auto scroll-thin bg-[var(--bg)] ${focus ? 'hidden' : ''}`}>
             {scanError && (
               <div className="m-3 surface p-3 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
                 <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0" /> {scanError}
@@ -208,11 +242,27 @@ export default function App() {
           </div>
           <div className="flex-1 min-w-0 bg-[var(--bg-elev)]">
             {selected && scan ? (
-              <SkillDetail key={selected.id} skill={selected} home={scan.home} update={updates[selected.id]} checking={checking || checkingOne === selected.id} onCheck={() => checkOne(selected.id)} tab={tab} setTab={setTab} />
+              <SkillDetail
+                key={selected.id}
+                skill={selected}
+                home={scan.home}
+                update={updates[selected.id]}
+                checking={checking || checkingOne === selected.id}
+                onCheck={() => checkOne(selected.id)}
+                tab={tab}
+                setTab={setTab}
+                focus={focus}
+                setFocus={setFocus}
+              />
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-[var(--fg-faint)] gap-3">
                 <Inbox className="h-10 w-10" />
                 <div className="text-sm">{scan && skills.length === 0 ? 'No skills found in any known directory.' : 'Select a skill to view it.'}</div>
+                {focus && (
+                  <button type="button" className="btn" onClick={() => setFocus(false)}>
+                    <PanelLeftOpen className="h-4 w-4" /> Show skill list
+                  </button>
+                )}
               </div>
             )}
           </div>

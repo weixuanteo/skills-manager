@@ -28,7 +28,9 @@ The app never runs a mutating command itself. It only shows you commands to copy
   - `skills` CLI: latest upstream commit touching the skill's path (GitHub API) vs. the install time in the lockfile
 - Codex's bundled skills (`~/.codex/skills/.system`) are hidden by default. Flip the "Hide Codex built-ins" switch in the sidebar, click "show them" under the list, or select the "Codex built-in" install-method filter to see them. The choice is remembered.
 - Light, dark and system theme.
-- Keyboard: `/` focuses search.
+- Reading mode (the expand icon in the skill header, or `\`): hides the filter sidebar and the skill list, collapses the header to one row and centres the document. Remembered across reloads; focusing the search box brings the list back.
+- On laptop-width windows the filter sidebar starts collapsed (`[` or the header button toggles it) and the heading outline opens as a popover instead of taking a column.
+- Keyboard: `/` focuses search, `\` toggles reading mode, `[` toggles the filter sidebar.
 
 ## Running
 

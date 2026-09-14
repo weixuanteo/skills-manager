@@ -1,4 +1,4 @@
-import { BookOpen, FolderTree, Settings2, FileWarning } from 'lucide-react'
+import { BookOpen, FolderTree, Settings2, FileWarning, Maximize2, Minimize2, PanelLeftOpen } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { Skill, UpdateStatus } from '@shared/types'
 import { api } from '../lib/api'
@@ -20,9 +20,12 @@ interface Props {
   onCheck: () => void
   tab: Tab
   setTab: (t: Tab) => void
+  /** Reading mode: the list and sidebar are hidden and the header collapses to a single row. */
+  focus: boolean
+  setFocus: (v: boolean) => void
 }
 
-export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab }: Props) {
+export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus }: Props) {
   const [readme, setReadme] = useState<string | null>(null)
   const [readmeError, setReadmeError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState('SKILL.md')
@@ -57,47 +60,88 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0">
-      <header className="px-6 pt-5 pb-0 border-b border-[var(--border)] shrink-0">
-        <div className="flex items-start gap-4">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h2 className="text-xl font-semibold tracking-tight truncate">{skill.name}</h2>
-              <UpdateBadge state={update?.state} loading={checking && !update && skill.install.updateCheckable} />
-            </div>
-            {skill.description && <p className="mt-1 text-sm text-[var(--fg-muted)] leading-relaxed max-w-3xl">{skill.description}</p>}
-            <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+    <div className="flex flex-col h-full min-h-0 @container">
+      {focus ? (
+        <header className="h-11 px-2 border-b border-[var(--border)] shrink-0 flex items-center gap-1 min-w-0">
+          <button type="button" className="btn btn-ghost btn-icon" onClick={() => setFocus(false)} title="Show skill list (\\)">
+            <PanelLeftOpen className="h-4 w-4" />
+          </button>
+          <div className="flex items-center gap-2 min-w-0 flex-1 px-1">
+            <h2 className="text-sm font-semibold tracking-tight truncate" title={skill.description}>
+              {skill.name}
+            </h2>
+            <UpdateBadge state={update?.state} loading={checking && !update && skill.install.updateCheckable} />
+            <div className="hidden @3xl:flex items-center gap-1.5 min-w-0 overflow-hidden">
               {skill.agents.map((a) => (
-                <AgentBadge key={a} agent={a} />
+                <AgentBadge key={a} agent={a} small />
               ))}
-              {skill.scopes.map((s) => (
-                <ScopeBadge key={s} scope={s} />
-              ))}
-              <MethodBadge method={skill.install.method} label={skill.install.label} />
-              <span className="chip">{skill.fileCount} files · {formatBytes(skill.totalSize)}</span>
-              <span className="chip" title={new Date(skill.lastModified).toLocaleString()}>updated {timeAgo(skill.lastModified)}</span>
-            </div>
-            <div className="mt-2 flex items-center gap-1 text-xs text-[var(--fg-faint)] font-mono min-w-0">
-              <span className="truncate">{tildify(skill.realPath, home)}</span>
-              <CopyButton text={skill.realPath} className="h-6 w-6" />
+              <span className="chip h-5 px-1.5 text-[11px]">{skill.install.label}</span>
             </div>
           </div>
-        </div>
-        <nav className="mt-3 -mb-px flex items-center gap-1">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              type="button"
-              onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-1.5 h-9 px-3 text-sm border-b-2 transition-colors ${
-                tab === t.id ? 'border-accent-500 text-[var(--fg)] font-medium' : 'border-transparent text-[var(--fg-muted)] hover:text-[var(--fg)]'
-              }`}
-            >
-              {t.icon} {t.label}
+          <nav className="flex items-center gap-0.5">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                title={t.label}
+                className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[13px] transition-colors ${
+                  tab === t.id ? 'bg-[var(--bg-sunken)] text-[var(--fg)] font-medium' : 'text-[var(--fg-muted)] hover:text-[var(--fg)] hover:bg-[var(--bg-hover)]'
+                }`}
+              >
+                {t.icon} <span className="hidden @xl:inline">{t.label}</span>
+              </button>
+            ))}
+          </nav>
+          <button type="button" className="btn btn-ghost btn-icon ml-1" onClick={() => setFocus(false)} title="Exit reading mode (\\)">
+            <Minimize2 className="h-4 w-4" />
+          </button>
+        </header>
+      ) : (
+        <header className="px-4 @3xl:px-6 pt-4 pb-0 border-b border-[var(--border)] shrink-0">
+          <div className="flex items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-semibold tracking-tight truncate">{skill.name}</h2>
+                <UpdateBadge state={update?.state} loading={checking && !update && skill.install.updateCheckable} />
+              </div>
+              {skill.description && <p className="mt-1 text-sm text-[var(--fg-muted)] leading-relaxed max-w-3xl line-clamp-2 @3xl:line-clamp-none">{skill.description}</p>}
+              <div className="mt-3 flex items-center gap-1.5 flex-wrap">
+                {skill.agents.map((a) => (
+                  <AgentBadge key={a} agent={a} />
+                ))}
+                {skill.scopes.map((s) => (
+                  <ScopeBadge key={s} scope={s} />
+                ))}
+                <MethodBadge method={skill.install.method} label={skill.install.label} />
+                <span className="chip">{skill.fileCount} files · {formatBytes(skill.totalSize)}</span>
+                <span className="chip" title={new Date(skill.lastModified).toLocaleString()}>updated {timeAgo(skill.lastModified)}</span>
+              </div>
+              <div className="mt-2 flex items-center gap-1 text-xs text-[var(--fg-faint)] font-mono min-w-0">
+                <span className="truncate">{tildify(skill.realPath, home)}</span>
+                <CopyButton text={skill.realPath} className="h-6 w-6" />
+              </div>
+            </div>
+            <button type="button" className="btn btn-ghost btn-icon shrink-0 -mr-2 -mt-1 text-[var(--fg-muted)]" onClick={() => setFocus(true)} title="Reading mode: hide the list and filters (\\)">
+              <Maximize2 className="h-4 w-4" />
             </button>
-          ))}
-        </nav>
-      </header>
+          </div>
+          <nav className="mt-2 -mb-px flex items-center gap-1">
+            {tabs.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTab(t.id)}
+                className={`inline-flex items-center gap-1.5 h-9 px-3 text-sm border-b-2 transition-colors ${
+                  tab === t.id ? 'border-accent-500 text-[var(--fg)] font-medium' : 'border-transparent text-[var(--fg-muted)] hover:text-[var(--fg)]'
+                }`}
+              >
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </nav>
+        </header>
+      )}
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'readme' && (
