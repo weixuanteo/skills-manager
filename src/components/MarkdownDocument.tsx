@@ -44,12 +44,10 @@ export function MarkdownDocument({ source, baseDir, onOpenRelative, header }: Pr
     return () => ro.disconnect()
   }, [])
 
+  // Callers mount a fresh instance per document (via `key`), so a `source` change here is a re-read
+  // of the same file: rebuild the outline but keep the scroll position.
   useLayoutEffect(() => {
-    pinned.current = null
-    setPopoverOpen(false)
     setHeadings(mdRef.current ? collectHeadings(mdRef.current) : [])
-    setActiveId(null)
-    scrollRef.current?.scrollTo({ top: 0 })
   }, [source])
 
   useEffect(() => {

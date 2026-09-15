@@ -1,7 +1,7 @@
 import { ChevronDown, ChevronRight, File, FileCode2, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
-import type { FileContent, FileEntry, Skill } from '@shared/types'
-import { api } from '../lib/api'
+import { Suspense, use, useState } from 'react'
+import type { FileEntry, Skill } from '@shared/types'
+import type { FileResult } from '../lib/api'
 import { formatBytes } from '../lib/format'
 import { CopyButton } from './CommandBlock'
 import { MarkdownDocument } from './MarkdownDocument'
@@ -42,36 +42,59 @@ function Tree({ entries, depth, selected, onSelect, openDirs, toggle }: { entrie
   )
 }
 
-export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selected: string; onSelect: (p: string) => void }) {
-  const [openDirs, setOpenDirs] = useState<Set<string>>(() => new Set())
-  const [file, setFile] = useState<FileContent | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
+export interface OpenFile {
+  path: string
+  content: Promise<FileResult>
+}
 
-  useEffect(() => {
-    const parts = selected.split('/')
-    if (parts.length > 1) {
-      setOpenDirs((prev) => {
-        const next = new Set(prev)
-        for (let i = 1; i < parts.length; i++) next.add(parts.slice(0, i).join('/'))
-        return next
-      })
-    }
-  }, [selected])
+interface Props {
+  skill: Skill
+  file: OpenFile
+  onSelect: (p: string) => void
+}
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    api
-      .file(skill.id, selected)
-      .then((f) => !cancelled && setFile(f))
-      .catch((e: Error) => !cancelled && setError(e.message))
-      .finally(() => !cancelled && setLoading(false))
-    return () => {
-      cancelled = true
-    }
-  }, [skill.id, selected])
+function ancestorsOf(path: string): string[] {
+  const parts = path.split('/')
+  return parts.slice(1).map((_, i) => parts.slice(0, i + 1).join('/'))
+}
+
+function FileToolbar({ content, raw, setRaw }: { content: Promise<FileResult>; raw: boolean; setRaw: (fn: (r: boolean) => boolean) => void }) {
+  const { file } = use(content)
+  if (!file) return null
+  return (
+    <>
+      {!file.binary && <span className="tabular-nums">· {formatBytes(file.size)}</span>}
+      {file.truncated && <span className="text-amber-600 dark:text-amber-400">(truncated to 1 MB)</span>}
+      <span className="flex-1" />
+      {file.language === 'markdown' && (
+        <button type="button" className="btn btn-ghost h-6 px-2 text-xs" onClick={() => setRaw((r) => !r)}>
+          {raw ? 'Rendered' : 'Raw'}
+        </button>
+      )}
+      {!file.binary && <CopyButton text={file.content} className="h-6 w-6" />}
+    </>
+  )
+}
+
+function FileView({ path, content, raw, onSelect }: { path: string; content: Promise<FileResult>; raw: boolean; onSelect: (p: string) => void }) {
+  const { file, error } = use(content)
+  if (error) return <div className="p-6 text-sm text-red-600 dark:text-red-400">{error}</div>
+  if (!file) return null
+  if (file.binary) return <div className="p-6 text-sm text-[var(--fg-muted)]">Binary file ({formatBytes(file.size)}), not displayed.</div>
+  if (file.language === 'markdown' && !raw) {
+    const baseDir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''
+    return <MarkdownDocument key={path} source={splitFrontmatter(file.content).body} baseDir={baseDir} onOpenRelative={onSelect} />
+  }
+  return (
+    <div className="flex-1 min-h-0 overflow-auto scroll-thin">
+      <CodeView code={file.content} language={file.language} />
+    </div>
+  )
+}
+
+export function FileBrowser({ skill, file, onSelect }: Props) {
+  const [openDirs, setOpenDirs] = useState(() => new Set(ancestorsOf(file.path)))
+  const [raw, setRaw] = useState(false)
 
   const toggle = (p: string) =>
     setOpenDirs((prev) => {
@@ -81,46 +104,35 @@ export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selec
       return next
     })
 
-  const baseDir = selected.includes('/') ? selected.slice(0, selected.lastIndexOf('/')) : ''
-  const isMd = file?.language === 'markdown'
-  const [raw, setRaw] = useState(false)
+  const select = (p: string) => {
+    setOpenDirs((prev) => new Set([...prev, ...ancestorsOf(p)]))
+    onSelect(p)
+  }
 
   return (
     <div className="grid grid-cols-[240px_1fr] grid-rows-[minmax(0,1fr)] h-full min-h-0">
       <aside className="min-h-0 border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
-        <Tree entries={skill.files} depth={0} selected={selected} onSelect={onSelect} openDirs={openDirs} toggle={toggle} />
+        <Tree entries={skill.files} depth={0} selected={file.path} onSelect={select} openDirs={openDirs} toggle={toggle} />
       </aside>
       <section className="min-w-0 min-h-0 flex flex-col">
         <div className="flex items-center gap-2 px-4 h-10 border-b border-[var(--border)] text-xs text-[var(--fg-muted)] shrink-0">
-          <span className="font-mono truncate">{selected}</span>
-          {file && !file.binary && <span className="tabular-nums">· {formatBytes(file.size)}</span>}
-          {file?.truncated && <span className="text-amber-600 dark:text-amber-400">(truncated to 1 MB)</span>}
-          <span className="flex-1" />
-          {isMd && (
-            <button type="button" className="btn btn-ghost h-6 px-2 text-xs" onClick={() => setRaw((r) => !r)}>
-              {raw ? 'Rendered' : 'Raw'}
-            </button>
-          )}
-          {file && !file.binary && <CopyButton text={file.content} className="h-6 w-6" />}
+          <span className="font-mono truncate">{file.path}</span>
+          <Suspense fallback={null}>
+            <FileToolbar content={file.content} raw={raw} setRaw={setRaw} />
+          </Suspense>
         </div>
         <div className="flex-1 min-h-0 flex flex-col">
-          {file && !file.binary && isMd && !raw ? (
-            <MarkdownDocument key={selected} source={splitFrontmatter(file.content).body} baseDir={baseDir} onOpenRelative={onSelect} />
-          ) : (
-            <div className="flex-1 min-h-0 overflow-auto scroll-thin">
-              {loading && !file && (
-                <div className="p-6 text-sm text-[var(--fg-muted)] flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-                </div>
-              )}
-              {error && <div className="p-6 text-sm text-red-600 dark:text-red-400">{error}</div>}
-              {file && file.binary && <div className="p-6 text-sm text-[var(--fg-muted)]">Binary file ({formatBytes(file.size)}), not displayed.</div>}
-              {file && !file.binary && (!isMd || raw) && <CodeView code={file.content} language={file.language} />}
-            </div>
-          )}
+          <Suspense
+            fallback={
+              <div className="p-6 text-sm text-[var(--fg-muted)] flex items-center gap-2">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+              </div>
+            }
+          >
+            <FileView path={file.path} content={file.content} raw={raw} onSelect={select} />
+          </Suspense>
         </div>
       </section>
     </div>
   )
 }
-

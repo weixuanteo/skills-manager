@@ -1,12 +1,12 @@
-import { BookOpen, FolderTree, Settings2, FileWarning, Maximize2, Minimize2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { BookOpen, FolderTree, Settings2, FileWarning, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
+import { Suspense, use, useState, useTransition } from 'react'
 import type { Skill, UpdateStatus } from '@shared/types'
-import { api } from '../lib/api'
+import { loadFile, type FileResult } from '../lib/api'
 import { formatBytes, timeAgo, tildify } from '../lib/format'
 import { splitFrontmatter } from '@shared/frontmatter'
 import { AgentBadge, MethodBadge, ScopeBadge, UpdateBadge } from './Badges'
 import { CopyButton } from './CommandBlock'
-import { FileBrowser } from './FileBrowser'
+import { FileBrowser, type OpenFile } from './FileBrowser'
 import { ManagePanel } from './ManagePanel'
 import { MarkdownDocument } from './MarkdownDocument'
 
@@ -52,33 +52,69 @@ interface Props {
   setFocus: (v: boolean) => void
 }
 
-export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus }: Props) {
-  const [readme, setReadme] = useState<string | null>(null)
-  const [readmeError, setReadmeError] = useState<string | null>(null)
-  const [selectedFile, setSelectedFile] = useState('SKILL.md')
+function Readme({ content, frontmatter, onOpenRelative }: { content: Promise<FileResult>; frontmatter: Skill['frontmatter']; onOpenRelative: (p: string) => void }) {
   const [showFm, setShowFm] = useState(false)
+  const { file, error } = use(content)
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="surface p-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
+          <FileWarning className="h-4 w-4" /> {error}
+        </div>
+      </div>
+    )
+  }
+  if (!file) return null
+  const fm = splitFrontmatter(file.content)
+  const fmKeys = Object.keys(frontmatter).filter((k) => k !== 'name' && k !== 'description')
+  return (
+    <MarkdownDocument
+      source={fm.body}
+      onOpenRelative={onOpenRelative}
+      header={
+        fm.raw ? (
+          <div className="surface mb-6 overflow-hidden">
+            <button type="button" onClick={() => setShowFm((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-hover)]">
+              <span>Frontmatter{fmKeys.length ? ` · ${fmKeys.join(', ')}` : ''}</span>
+              <span>{showFm ? 'Hide' : 'Show'}</span>
+            </button>
+            {showFm && <pre className="px-4 pb-3 text-[12px] font-mono text-[var(--fg-muted)] overflow-x-auto scroll-thin border-t border-[var(--border)] pt-3">{fm.raw}</pre>}
+          </div>
+        ) : null
+      }
+    />
+  )
+}
 
-  useEffect(() => {
-    let cancelled = false
-    setReadme(null)
-    setReadmeError(null)
-    setSelectedFile(skill.skillFile.slice(skill.realPath.length + 1) || 'SKILL.md')
-    api
-      .file(skill.id, skill.skillFile.slice(skill.realPath.length + 1) || 'SKILL.md')
-      .then((f) => !cancelled && setReadme(f.content))
-      .catch((e: Error) => !cancelled && setReadmeError(e.message))
-    return () => {
-      cancelled = true
-    }
-  }, [skill.id, skill.realPath, skill.skillFile])
+export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus }: Props) {
+  const readmePath = skill.skillFile.slice(skill.realPath.length + 1) || 'SKILL.md'
+  // File contents are promises read with `use()`; this component remounts per skill (keyed by id).
+  const [readme, setReadme] = useState(() => loadFile(skill.id, readmePath))
+  const [file, setFile] = useState<OpenFile>(() => ({ path: readmePath, content: readme }))
+  const [reloading, startReload] = useTransition()
 
-  const fm = readme != null ? splitFrontmatter(readme) : null
-  const fmEntries = Object.entries(skill.frontmatter).filter(([k]) => k !== 'name' && k !== 'description')
-
+  const openFile = (path: string) => setFile({ path, content: loadFile(skill.id, path) })
   const openRelative = (p: string) => {
-    setSelectedFile(p)
+    openFile(p)
     setTab('files')
   }
+
+  // A transition keeps the current document (and its scroll position) on screen until the re-read resolves.
+  const reload = () => {
+    if (tab === 'readme') {
+      const next = loadFile(skill.id, readmePath)
+      startReload(() => setReadme(next))
+    } else if (tab === 'files') {
+      const next = loadFile(skill.id, file.path)
+      startReload(() => setFile({ path: file.path, content: next }))
+    }
+  }
+  const reloadButton =
+    tab !== 'manage' ? (
+      <button type="button" className="btn btn-ghost btn-icon shrink-0 text-[var(--fg-muted)]" onClick={reload} disabled={reloading} title="Reload this file from disk">
+        <RefreshCw className={`h-4 w-4 ${reloading ? 'animate-spin' : ''}`} />
+      </button>
+    ) : null
 
   const updateBadge = <UpdateBadge state={update?.state} loading={checking && !update && skill.install.updateCheckable} />
   const agentBadges = (small?: boolean) => skill.agents.map((a) => <AgentBadge key={a} agent={a} small={small} />)
@@ -98,6 +134,7 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
             </div>
           </div>
           <TabBar tab={tab} setTab={setTab} compact />
+          {reloadButton}
           <button type="button" className="btn btn-ghost btn-icon ml-1" onClick={() => setFocus(false)} title="Exit reading mode (\\)">
             <Minimize2 className="h-4 w-4" />
           </button>
@@ -129,43 +166,20 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
               <Maximize2 className="h-4 w-4" />
             </button>
           </div>
-          <TabBar tab={tab} setTab={setTab} />
+          <div className="flex items-end justify-between gap-2">
+            <TabBar tab={tab} setTab={setTab} />
+            {reloadButton && <div className="pb-0.5 -mr-2">{reloadButton}</div>}
+          </div>
         </header>
       )}
 
       <div className="flex-1 min-h-0 overflow-hidden">
         {tab === 'readme' && (
-          <>
-            {(readmeError || (readme == null && !readmeError)) && (
-              <div className="p-6">
-                {readmeError && (
-                  <div className="surface p-4 text-sm text-red-600 dark:text-red-400 flex items-center gap-2">
-                    <FileWarning className="h-4 w-4" /> {readmeError}
-                  </div>
-                )}
-                {readme == null && !readmeError && <div className="text-sm text-[var(--fg-muted)]">Loading…</div>}
-              </div>
-            )}
-            {fm && (
-              <MarkdownDocument
-                source={fm.body}
-                onOpenRelative={openRelative}
-                header={
-                  fm.raw ? (
-                    <div className="surface mb-6 overflow-hidden">
-                      <button type="button" onClick={() => setShowFm((v) => !v)} className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-hover)]">
-                        <span>Frontmatter{fmEntries.length ? ` · ${fmEntries.map(([k]) => k).join(', ')}` : ''}</span>
-                        <span>{showFm ? 'Hide' : 'Show'}</span>
-                      </button>
-                      {showFm && <pre className="px-4 pb-3 text-[12px] font-mono text-[var(--fg-muted)] overflow-x-auto scroll-thin border-t border-[var(--border)] pt-3">{fm.raw}</pre>}
-                    </div>
-                  ) : null
-                }
-              />
-            )}
-          </>
+          <Suspense fallback={<div className="p-6 text-sm text-[var(--fg-muted)]">Loading…</div>}>
+            <Readme content={readme} frontmatter={skill.frontmatter} onOpenRelative={openRelative} />
+          </Suspense>
         )}
-        {tab === 'files' && <FileBrowser skill={skill} selected={selectedFile} onSelect={setSelectedFile} />}
+        {tab === 'files' && <FileBrowser skill={skill} file={file} onSelect={openFile} />}
         {tab === 'manage' && (
           <div className="h-full overflow-y-auto scroll-thin">
             <ManagePanel skill={skill} home={home} update={update} checking={checking} onCheck={onCheck} />

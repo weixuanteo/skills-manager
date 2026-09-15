@@ -24,3 +24,12 @@ export const api = {
   saveConfig: (projectRoots: string[]) =>
     req<{ projectRoots: string[]; invalid: string[] }>('/api/config', { method: 'PUT', body: JSON.stringify({ projectRoots }) }),
 }
+
+export type FileResult = { file: FileContent; error?: undefined } | { file?: undefined; error: string }
+
+/** Never rejects, so it can be read with `use()` without an error boundary. */
+export const loadFile = (id: string, path: string): Promise<FileResult> =>
+  api.file(id, path).then(
+    (file) => ({ file }),
+    (e: Error) => ({ error: e.message }),
+  )
