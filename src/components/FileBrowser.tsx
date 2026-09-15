@@ -86,11 +86,11 @@ export function FileBrowser({ skill, selected, onSelect }: { skill: Skill; selec
   const [raw, setRaw] = useState(false)
 
   return (
-    <div className="grid grid-cols-[240px_1fr] h-full min-h-0">
-      <aside className="border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
+    <div className="grid grid-cols-[240px_1fr] grid-rows-[minmax(0,1fr)] h-full min-h-0">
+      <aside className="min-h-0 border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
         <Tree entries={skill.files} depth={0} selected={selected} onSelect={onSelect} openDirs={openDirs} toggle={toggle} />
       </aside>
-      <section className="min-w-0 flex flex-col">
+      <section className="min-w-0 min-h-0 flex flex-col">
         <div className="flex items-center gap-2 px-4 h-10 border-b border-[var(--border)] text-xs text-[var(--fg-muted)] shrink-0">
           <span className="font-mono truncate">{selected}</span>
           {file && !file.binary && <span className="tabular-nums">· {formatBytes(file.size)}</span>}
