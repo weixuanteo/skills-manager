@@ -10,6 +10,7 @@ interface Props {
   onFolders: () => void
   sidebarOpen: boolean
   onToggleSidebar: () => void
+  filtersActive: boolean
   focus: boolean
   onToggleFocus: () => void
   theme: Theme
@@ -19,7 +20,7 @@ interface Props {
 const NEXT_THEME: Record<Theme, Theme> = { light: 'dark', dark: 'system', system: 'light' }
 const THEME_LABEL: Record<Theme, string> = { light: 'Light', dark: 'Dark', system: 'System' }
 
-export function Rail({ onCheckUpdates, checking, updatesAvailable, onRescan, scanning, onFolders, sidebarOpen, onToggleSidebar, focus, onToggleFocus, theme, setTheme }: Props) {
+export function Rail({ onCheckUpdates, checking, updatesAvailable, onRescan, scanning, onFolders, sidebarOpen, onToggleSidebar, filtersActive, focus, onToggleFocus, theme, setTheme }: Props) {
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
   return (
     <nav className="w-11 shrink-0 border-r border-[var(--border)] bg-[var(--bg-elev)] flex flex-col items-center py-2 gap-1" aria-label="Main">
@@ -32,6 +33,7 @@ export function Rail({ onCheckUpdates, checking, updatesAvailable, onRescan, sca
       </button>
       <button type="button" className={`rail-btn ${sidebarOpen ? 'on' : ''}`} onClick={onToggleSidebar} aria-pressed={sidebarOpen} title={`${sidebarOpen ? 'Hide' : 'Show'} filters and scanned locations ([)`}>
         <SlidersHorizontal className="h-4 w-4" />
+        {filtersActive && !sidebarOpen && <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-accent-500" aria-label="Filters active" />}
       </button>
       <button type="button" className="rail-btn" onClick={onFolders} title="Project folders to scan">
         <FolderTree className="h-4 w-4" />

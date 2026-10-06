@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import type { AgentId, FileEntry, ScanResult, ScanRoot, Scope, Skill, SkillLocation } from '../shared/types.ts'
+import type { AgentId, ClaudePluginInfo, FileEntry, ScanResult, ScanRoot, Scope, Skill, SkillLocation } from '../shared/types.ts'
 import { AGENTS } from './agents.ts'
 import { createDetectContext, detectInstall } from './detect.ts'
-import { exists, hashId, isDir, parseFrontmatter, tildify } from './util.ts'
+import { exists, hashId, isDir, parseFrontmatter, readJson, tildify } from './util.ts'
 
 const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.cache'])
 const MAX_TREE_ENTRIES = 600
@@ -85,33 +85,22 @@ function flatten(tree: FileEntry[]): FileEntry[] {
   return out
 }
 
-async function claudePluginRoots(home: string): Promise<RootDef[]> {
-  const base = path.join(home, '.claude', 'plugins')
-  if (!(await isDir(base))) return []
+/**
+ * Claude Code loads skills only from the version recorded in installed_plugins.json. The marketplaces/
+ * catalog and superseded cache versions sit on disk too but are never used.
+ */
+async function claudePluginRoots(home: string, plugins: ClaudePluginInfo[]): Promise<RootDef[]> {
+  const settings = await readJson<{ enabledPlugins?: Record<string, boolean> }>(path.join(home, '.claude', 'settings.json'))
   const roots: RootDef[] = []
-  const seen = new Set<string>()
-  const add = (p: string, label: string) => {
-    if (!seen.has(p)) {
-      seen.add(p)
-      roots.push({ path: p, agent: 'claude-plugin', scope: 'global', label })
+  for (const p of plugins) {
+    const key = p.marketplace ? `${p.plugin}@${p.marketplace}` : p.plugin
+    if (settings?.enabledPlugins?.[key] === false) continue
+    const manifest = await readJson<{ skills?: string | string[] }>(path.join(p.installPath, '.claude-plugin', 'plugin.json'))
+    const extra = typeof manifest?.skills === 'string' ? [manifest.skills] : Array.isArray(manifest?.skills) ? manifest.skills : []
+    for (const dir of new Set(['skills', ...extra].map((d) => path.resolve(p.installPath, d)))) {
+      roots.push({ path: dir, agent: 'claude-plugin', scope: 'global', label: p.plugin })
     }
   }
-  const walk = async (dir: string, depth: number) => {
-    if (depth > 4) return
-    let entries: import('node:fs').Dirent[]
-    try {
-      entries = await fs.readdir(dir, { withFileTypes: true })
-    } catch {
-      return
-    }
-    for (const e of entries) {
-      if (!e.isDirectory() || SKIP_DIRS.has(e.name)) continue
-      const full = path.join(dir, e.name)
-      if (e.name === 'skills') add(full, `Claude plugin: ${path.basename(dir)}`)
-      else await walk(full, depth + 1)
-    }
-  }
-  await walk(base, 0)
   return roots
 }
 
@@ -125,7 +114,7 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
     if (a.projectOnly) continue
     for (const d of a.dirs) rootDefs.push({ path: path.join(home, d), agent: a.id, scope: 'global', label: a.label })
   }
-  rootDefs.push(...(await claudePluginRoots(home)))
+  rootDefs.push(...(await claudePluginRoots(home, ctx.claudePlugins)))
   for (const pr of projectRoots) {
     for (const a of AGENTS) {
       for (const d of a.dirs) rootDefs.push({ path: path.join(pr, d), agent: a.id, scope: 'project', label: `${a.label} · ${tildify(pr, home)}` })

@@ -4,28 +4,43 @@ import { flushSync } from 'react-dom'
 import type { AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
 import { ProjectRootsDialog } from './components/ProjectRootsDialog'
 import { Rail } from './components/Rail'
-import { Sidebar, type Filters } from './components/Sidebar'
+import { Sidebar } from './components/Sidebar'
 import { SkillDetail, type Tab } from './components/SkillDetail'
 import { SkillList } from './components/SkillList'
 import { StatusBar } from './components/StatusBar'
 import { usePersistedBool } from './hooks/usePersisted'
 import { useTheme } from './hooks/useTheme'
 import { api } from './lib/api'
+import {
+  SOURCES,
+  SOURCE_LABELS,
+  SOURCE_METHODS,
+  emptyFacets,
+  facetAgents,
+  facetCount,
+  failedDims,
+  matchesQuery,
+  needsAttention,
+  skillSource,
+  type Dim,
+  type Facets,
+  type Source,
+  type SourceView,
+} from './lib/filters'
 import { METHOD_LABELS } from './lib/format'
 
-const HIDE_BUILTIN_KEY = 'sm-hide-builtin'
+const SOURCE_KEY = 'sm-source'
 const FOCUS_KEY = 'sm-focus'
 const SIDEBAR_KEY = 'sm-sidebar'
 
-type Quick = 'all' | 'attention' | 'linked' | 'plugins' | 'builtin'
+const SOURCE_HINTS: Record<SourceView, string> = {
+  mine: 'Skills you installed or wrote yourself',
+  plugins: 'Skills bundled with installed Claude Code plugins',
+  builtin: 'Skills that ship with Codex',
+  all: 'Every scanned skill',
+}
 
-const QUICK: { id: Quick; label: string }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'attention', label: 'Attention' },
-  { id: 'linked', label: 'Symlinked' },
-  { id: 'plugins', label: 'Plugins' },
-  { id: 'builtin', label: 'Built-ins' },
-]
+const isSourceView = (v: string | null): v is SourceView => v !== null && v in SOURCE_LABELS
 
 type ScanResponse = { scan: ScanResult | null; error?: string }
 
@@ -40,31 +55,7 @@ const loadScan = (refresh: boolean, prev: ScanResult | null = null): Promise<Sca
 // so an initializer-created promise would restart the scan on every retry.
 const firstScan = loadScan(false)
 
-const emptyFilters = (): Filters => ({
-  agents: new Set(),
-  scopes: new Set(),
-  methods: new Set(),
-  updates: new Set(),
-  hideBuiltIn: localStorage.getItem(HIDE_BUILTIN_KEY) !== '0',
-})
-
-function quickMatch(q: Quick, s: Skill, u?: UpdateStatus): boolean {
-  switch (q) {
-    case 'attention':
-      return s.warnings.length > 0 || u?.state === 'update-available' || u?.state === 'error'
-    case 'linked':
-      return s.locations.some((l) => l.isSymlink)
-    case 'plugins':
-      return s.install.method === 'claude-plugin'
-    case 'builtin':
-      return s.install.method === 'codex-system'
-    default:
-      return true
-  }
-}
-
-/** Built-ins stay hidden unless a filter asks for them explicitly. */
-const hidesBuiltIns = (f: Filters, q: Quick) => f.hideBuiltIn && !f.methods.has('codex-system') && q !== 'builtin'
+const bump = <K,>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1)
 
 function syncUrl(skill: string | null, tab: Tab) {
   const url = new URL(location.href)
@@ -85,9 +76,15 @@ export default function App() {
   const [checking, setChecking] = useState(false)
   const [checkingOne, setCheckingOne] = useState<string | null>(null)
   const [query, setQuery] = useState('')
-  const [quick, setQuick] = useState<Quick>('all')
-  const [filters, setFiltersState] = useState<Filters>(emptyFilters)
+  const [facets, setFacets] = useState<Facets>(emptyFacets)
   const [chosenId, setChosenId] = useState<string | null>(() => new URLSearchParams(location.search).get('skill'))
+  // A deep link to a skill outside the saved source opens that skill's source instead, without saving it.
+  const [source, setSourceState] = useState<SourceView>(() => {
+    const stored = localStorage.getItem(SOURCE_KEY)
+    const saved = isSourceView(stored) ? stored : 'mine'
+    const linked = scan?.skills.find((s) => s.id === chosenId)
+    return linked && saved !== 'all' && skillSource(linked) !== saved ? skillSource(linked) : saved
+  })
   const [tab, setTabState] = useState<Tab>(() => {
     const t = new URLSearchParams(location.search).get('tab')
     return t === 'files' || t === 'info' ? t : 'readme'
@@ -97,9 +94,9 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = usePersistedBool(SIDEBAR_KEY, false)
   const searchRef = useRef<HTMLInputElement | null>(null)
 
-  const setFilters = (f: Filters) => {
-    setFiltersState(f)
-    localStorage.setItem(HIDE_BUILTIN_KEY, f.hideBuiltIn ? '1' : '0')
+  const setSource = (v: SourceView) => {
+    setSourceState(v)
+    localStorage.setItem(SOURCE_KEY, v)
   }
 
   const toggleSidebar = () => {
@@ -137,24 +134,6 @@ export default function App() {
 
   const skills = scan?.skills ?? []
 
-  const counts = useMemo(() => {
-    const agents = new Map<AgentId, number>()
-    const scopes = new Map<Scope, number>()
-    const methods = new Map<InstallMethod, number>()
-    const ups = new Map<UpdateState, number>()
-    for (const s of skills) {
-      for (const a of s.agents) agents.set(a, (agents.get(a) ?? 0) + 1)
-      for (const sc of s.scopes) scopes.set(sc, (scopes.get(sc) ?? 0) + 1)
-      methods.set(s.install.method, (methods.get(s.install.method) ?? 0) + 1)
-      const u = updates[s.id]?.state
-      if (u) ups.set(u, (ups.get(u) ?? 0) + 1)
-    }
-    return { agents, scopes, methods, updates: ups }
-  }, [skills, updates])
-
-  const builtInCount = useMemo(() => skills.filter((s) => s.install.method === 'codex-system').length, [skills])
-  const builtInHidden = hidesBuiltIns(filters, quick)
-
   /** Same-named skills get their plugin or install method as a suffix. */
   const subNames = useMemo(() => {
     const perName = new Map<string, number>()
@@ -163,36 +142,51 @@ export default function App() {
     return new Map(skills.filter((s) => perName.get(s.name)! > 1).map((s) => [s.id, label(s)]))
   }, [skills])
 
-  const quickCounts = useMemo(() => {
-    const m = new Map<Quick, number>()
-    for (const q of QUICK) {
-      const hide = hidesBuiltIns(filters, q.id)
-      m.set(q.id, skills.filter((s) => !(hide && s.install.method === 'codex-system') && quickMatch(q.id, s, updates[s.id])).length)
+  /**
+   * One pass builds the list and every count. A skill counts toward a dimension when it passes all the
+   * others, so each count says what selecting that option would show.
+   */
+  const view = useMemo(() => {
+    const totals = new Set(skills.map(skillSource))
+    const segments: SourceView[] = SOURCES.filter((x) => totals.has(x))
+    if (segments.length > 1) segments.push('all')
+    const active: SourceView = segments.includes(source) ? source : 'all'
+    const shown: Skill[] = []
+    const counts = {
+      sources: new Map<SourceView, number>(),
+      sourceAttention: new Set<SourceView>(),
+      agents: new Map<AgentId, number>(),
+      scopes: new Map<Scope, number>(),
+      methods: new Map<InstallMethod, number>(),
+      updates: new Map<UpdateState, number>(),
+      attention: 0,
     }
-    return m
-  }, [skills, updates, filters])
-
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase()
-    return skills.filter((s) => {
-      if (builtInHidden && s.install.method === 'codex-system') return false
-      if (!quickMatch(quick, s, updates[s.id])) return false
-      if (filters.agents.size && !s.agents.some((a) => filters.agents.has(a))) return false
-      if (filters.scopes.size && !s.scopes.some((a) => filters.scopes.has(a))) return false
-      if (filters.methods.size && !filters.methods.has(s.install.method)) return false
-      if (filters.updates.size) {
-        const u = updates[s.id]?.state
-        if (!u || !filters.updates.has(u)) return false
+    for (const s of skills) {
+      if (!matchesQuery(s, query)) continue
+      const u = updates[s.id]
+      const fails = failedDims(s, active, facets, u)
+      const tally = (d: Dim) => fails.length === 0 || (fails.length === 1 && fails[0] === d)
+      const attention = needsAttention(s, u)
+      if (fails.length === 0) shown.push(s)
+      if (tally('source')) {
+        const src: Source = skillSource(s)
+        bump(counts.sources, src)
+        bump(counts.sources, 'all')
+        if (attention) counts.sourceAttention.add(src).add('all')
       }
-      if (q) {
-        const hay = `${s.name} ${s.description ?? ''} ${s.realPath} ${s.locations.map((l) => l.path).join(' ')} ${s.install.label} ${s.install.claudePlugin?.plugin ?? ''}`.toLowerCase()
-        if (!q.split(/\s+/).every((part) => hay.includes(part))) return false
-      }
-      return true
-    })
-  }, [skills, filters, query, quick, updates, builtInHidden])
+      if (tally('agents')) for (const a of facetAgents(s)) bump(counts.agents, a)
+      if (tally('scopes')) for (const x of s.scopes) bump(counts.scopes, x)
+      if (tally('methods') && !SOURCE_METHODS.has(s.install.method)) bump(counts.methods, s.install.method)
+      if (tally('updates') && u) bump(counts.updates, u.state)
+      if (tally('attention') && attention) counts.attention++
+    }
+    return { segments, active, shown, counts }
+  }, [skills, source, facets, query, updates])
 
-  const selected = skills.find((s) => s.id === chosenId) ?? filtered[0] ?? null
+  const filtered = view.shown
+  const refinements = facetCount(facets)
+
+  const selected = filtered.find((s) => s.id === chosenId) ?? filtered[0] ?? null
 
   const select = (id: string) => {
     setChosenId(id)
@@ -229,6 +223,11 @@ export default function App() {
       const dir = e.key === 'j' || e.key === 'ArrowDown' ? 1 : -1
       const next = filtered[Math.max(0, Math.min(filtered.length - 1, i + dir))]
       if (next) select(next.id)
+    } else if (/^[1-9]$/.test(e.key) && view.segments.length > 1) {
+      const seg = view.segments[Number(e.key) - 1]
+      if (!seg) return
+      e.preventDefault()
+      setSource(seg)
     }
   })
 
@@ -252,13 +251,14 @@ export default function App() {
         onFolders={() => setRootsOpen(true)}
         sidebarOpen={sidebarOpen && !focus}
         onToggleSidebar={toggleSidebar}
+        filtersActive={refinements > 0}
         focus={focus}
         onToggleFocus={() => setFocus(!focus)}
         theme={theme}
         setTheme={setTheme}
       />
       {scan && sidebarOpen && !focus && (
-        <Sidebar scan={scan} filters={filters} setFilters={setFilters} counts={counts} builtInCount={builtInCount} onManageRoots={() => setRootsOpen(true)} />
+        <Sidebar scan={scan} facets={facets} setFacets={setFacets} counts={view.counts} onManageRoots={() => setRootsOpen(true)} />
       )}
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex-1 flex min-h-0">
@@ -267,9 +267,6 @@ export default function App() {
               <div className="px-3 pt-2.5 pb-2 border-b border-[var(--border)] space-y-2 shrink-0">
                 <div className="flex items-center gap-2 text-[13px] font-semibold">
                   Skills
-                  <span className="text-[var(--fg-faint)] font-normal tabular-nums">
-                    {filtered.length} of {skills.length}
-                  </span>
                   {updatesAvailable > 0 && (
                     <span className="ml-auto text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
                       {updatesAvailable} update{updatesAvailable === 1 ? '' : 's'}
@@ -294,13 +291,39 @@ export default function App() {
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 kbd">/</span>
                   )}
                 </label>
-                <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Quick filter">
-                  {QUICK.map((q) => (
-                    <button key={q.id} type="button" role="radio" aria-checked={quick === q.id} className={`qchip ${quick === q.id ? 'on' : ''}`} onClick={() => setQuick(q.id)}>
-                      {q.label} <span className="opacity-60">{quickCounts.get(q.id) ?? 0}</span>
-                    </button>
-                  ))}
-                </div>
+                {view.segments.length > 1 && (
+                  <div className="seg" role="radiogroup" aria-label="Source">
+                    {view.segments.map((id, i) => {
+                      const on = view.active === id
+                      return (
+                        <button key={id} type="button" role="radio" aria-checked={on} className={`seg-btn ${on ? 'on' : ''}`} onClick={() => setSource(id)} title={`${SOURCE_HINTS[id]} (${i + 1})`}>
+                          {SOURCE_LABELS[id]} <span className="opacity-60">{view.counts.sources.get(id) ?? 0}</span>
+                          {!on && view.counts.sourceAttention.has(id) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" role="img" aria-label="Needs attention" title="Some skills here need attention" />}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {(view.counts.attention > 0 || facets.attention || refinements > 0) && (
+                  <div className="flex items-center gap-2 text-[11.5px]">
+                    {(view.counts.attention > 0 || facets.attention) && (
+                      <button type="button" aria-pressed={facets.attention} className={`qchip ${facets.attention ? 'on' : ''}`} onClick={() => setFacets({ ...facets, attention: !facets.attention })}>
+                        <TriangleAlert className="h-3 w-3" /> Needs attention <span className="opacity-60">{view.counts.attention}</span>
+                      </button>
+                    )}
+                    {refinements > 0 && (
+                      <span className="ml-auto flex items-center gap-1.5 text-[var(--fg-muted)] tabular-nums">
+                        <button type="button" className="hover:text-[var(--fg)] hover:underline" onClick={() => setSidebarOpen(true)} title="Show filters ([)">
+                          {refinements} filter{refinements === 1 ? '' : 's'}
+                        </button>
+                        ·
+                        <button type="button" className="text-accent-600 dark:text-accent-300 hover:underline" onClick={() => setFacets({ ...emptyFacets(), attention: facets.attention })}>
+                          Clear
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex-1 min-h-0 overflow-y-auto scroll-thin">
                 {error && (
@@ -315,7 +338,18 @@ export default function App() {
                     ))}
                   </div>
                 ) : null}
-                {scan && <SkillList skills={filtered} selectedId={selected?.id ?? null} onSelect={select} updates={updates} checking={checking} subNames={subNames} />}
+                {scan &&
+                  (filtered.length || !skills.length ? (
+                    <SkillList skills={filtered} selectedId={selected?.id ?? null} onSelect={select} updates={updates} checking={checking} subNames={subNames} />
+                  ) : (
+                    <NoMatches
+                      active={view.active}
+                      query={query}
+                      elsewhere={view.segments.filter((id) => id !== view.active && id !== 'all').map((id) => ({ id, count: view.counts.sources.get(id) ?? 0 })).filter((x) => x.count > 0)}
+                      onSource={setSource}
+                      onClear={facets.attention || refinements > 0 ? () => setFacets(emptyFacets()) : undefined}
+                    />
+                  ))}
               </div>
             </div>
           )}
@@ -346,9 +380,34 @@ export default function App() {
             )}
           </main>
         </div>
-        <StatusBar scan={scan} shown={filtered.length} hiddenBuiltIns={builtInHidden ? builtInCount : 0} onShowBuiltIns={() => setFilters({ ...filters, hideBuiltIn: false })} />
+        <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} />
       </div>
       {rootsOpen && scan && <ProjectRootsDialog onClose={() => setRootsOpen(false)} onSaved={rescan} home={scan.home} />}
+    </div>
+  )
+}
+
+function NoMatches({ active, query, elsewhere, onSource, onClear }: { active: SourceView; query: string; elsewhere: { id: SourceView; count: number }[]; onSource: (v: SourceView) => void; onClear?: () => void }) {
+  const q = query.trim()
+  return (
+    <div className="p-6 text-center text-[13px] text-[var(--fg-muted)] space-y-3">
+      <div>
+        Nothing{active !== 'all' && ` in ${SOURCE_LABELS[active]}`} matches {q ? <span className="text-[var(--fg)]">“{q}”</span> : 'these filters'}.
+      </div>
+      {(elsewhere.length > 0 || onClear) && (
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {elsewhere.map((x) => (
+            <button key={x.id} type="button" className="btn h-7 px-2.5 text-xs" onClick={() => onSource(x.id)}>
+              {x.count} in {SOURCE_LABELS[x.id]}
+            </button>
+          ))}
+          {onClear && (
+            <button type="button" className="btn btn-ghost h-7 px-2.5 text-xs" onClick={onClear}>
+              Clear filters
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }

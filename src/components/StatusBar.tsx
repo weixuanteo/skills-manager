@@ -3,11 +3,11 @@ import type { ScanResult } from '@shared/types'
 interface Props {
   scan: ScanResult | null
   shown: number
-  hiddenBuiltIns: number
-  onShowBuiltIns: () => void
+  /** Number of source segments reachable with the digit keys; 0 hides the hint. */
+  sourceKeys: number
 }
 
-export function StatusBar({ scan, shown, hiddenBuiltIns, onShowBuiltIns }: Props) {
+export function StatusBar({ scan, shown, sourceKeys }: Props) {
   return (
     <div className="h-[26px] shrink-0 border-t border-[var(--border)] bg-[var(--bg-elev)] flex items-center gap-4 px-3 text-[11.5px] text-[var(--fg-muted)] whitespace-nowrap overflow-hidden">
       {scan ? (
@@ -17,14 +17,6 @@ export function StatusBar({ scan, shown, hiddenBuiltIns, onShowBuiltIns }: Props
       ) : (
         <span>Scanning skill directories…</span>
       )}
-      {hiddenBuiltIns > 0 && (
-        <span>
-          {hiddenBuiltIns} Codex built-in{hiddenBuiltIns === 1 ? '' : 's'} hidden ·{' '}
-          <button type="button" className="text-accent-600 dark:text-accent-300 hover:underline" onClick={onShowBuiltIns}>
-            show
-          </button>
-        </span>
-      )}
       <span className="flex-1" />
       <span className="hidden md:flex items-center gap-4 text-[var(--fg-faint)]">
         <span>
@@ -33,6 +25,11 @@ export function StatusBar({ scan, shown, hiddenBuiltIns, onShowBuiltIns }: Props
         <span>
           <kbd className="kbd">/</kbd> search
         </span>
+        {sourceKeys > 0 && (
+          <span>
+            <kbd className="kbd">1</kbd>–<kbd className="kbd">{sourceKeys}</kbd> source
+          </span>
+        )}
         <span>
           <kbd className="kbd">[</kbd> filters
         </span>

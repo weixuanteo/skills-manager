@@ -105,6 +105,16 @@
   .qchip.on {
     @apply bg-[var(--fg)] text-[var(--bg-elev)] border-[var(--fg)];
   }
+  .seg {
+    @apply flex gap-0.5 p-0.5 rounded-md border border-[var(--border)] bg-[var(--bg-sunken)];
+  }
+  .seg-btn {
+    @apply flex-1 inline-flex items-center justify-center gap-1 h-[22px] px-1 rounded text-[11.5px] text-[var(--fg-muted)] hover:text-[var(--fg)]
+      transition-colors whitespace-nowrap cursor-pointer select-none tabular-nums;
+  }
+  .seg-btn.on {
+    @apply bg-[var(--bg-elev)] text-[var(--fg)] font-medium shadow-sm dark:bg-white/10;
+  }
   .btn {
     @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-sm font-medium border border-[var(--border)]
       bg-[var(--bg-elev)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed
