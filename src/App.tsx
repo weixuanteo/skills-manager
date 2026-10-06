@@ -1,7 +1,8 @@
 import { Inbox, PanelLeftOpen, Search, TriangleAlert, X } from 'lucide-react'
-import { use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
+import { type ReactNode, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
 import { flushSync } from 'react-dom'
 import type { AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
+import { ClaudeIcon, CodexIcon } from './components/BrandIcons'
 import { ProjectRootsDialog } from './components/ProjectRootsDialog'
 import { Rail } from './components/Rail'
 import { Sidebar } from './components/Sidebar'
@@ -38,6 +39,12 @@ const SOURCE_HINTS: Record<SourceView, string> = {
   plugins: 'Skills bundled with installed Claude Code plugins',
   builtin: 'Skills that ship with Codex',
   all: 'Every scanned skill',
+}
+
+/** The brand mark says whose ecosystem the skills come from, matching the badges on their rows. */
+const SOURCE_ICONS: Partial<Record<SourceView, ReactNode>> = {
+  plugins: <ClaudeIcon className="h-3 w-3 shrink-0 text-orange-600 dark:text-orange-300" />,
+  builtin: <CodexIcon className="h-3 w-3 shrink-0 text-emerald-600 dark:text-emerald-300" />,
 }
 
 const isSourceView = (v: string | null): v is SourceView => v !== null && v in SOURCE_LABELS
@@ -297,6 +304,7 @@ export default function App() {
                       const on = view.active === id
                       return (
                         <button key={id} type="button" role="radio" aria-checked={on} className={`seg-btn ${on ? 'on' : ''}`} onClick={() => setSource(id)} title={`${SOURCE_HINTS[id]} (${i + 1})`}>
+                          {SOURCE_ICONS[id]}
                           {SOURCE_LABELS[id]} <span className="opacity-60">{view.counts.sources.get(id) ?? 0}</span>
                           {!on && view.counts.sourceAttention.has(id) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" role="img" aria-label="Needs attention" title="Some skills here need attention" />}
                         </button>
