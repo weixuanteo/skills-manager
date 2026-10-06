@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, PanelRightClose, Search, X } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { Heading, OutlineNode } from '../lib/outline'
 import { buildTree } from '../lib/outline'
 
@@ -15,16 +15,6 @@ export function Outline({ headings, activeId, onSelect, onClose }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
   const [searching, setSearching] = useState(false)
   const [query, setQuery] = useState('')
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    setCollapsed(new Set())
-    setQuery('')
-  }, [headings])
-
-  useEffect(() => {
-    if (searching) inputRef.current?.focus()
-  }, [searching])
 
   const parentIds = useMemo(() => {
     const ids: string[] = []
@@ -71,7 +61,7 @@ export function Outline({ headings, activeId, onSelect, onClose }: Props) {
           <div className="flex items-center gap-1 flex-1 min-w-0">
             <Search className="h-3.5 w-3.5 text-[var(--fg-faint)] shrink-0" />
             <input
-              ref={inputRef}
+              autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Escape' && closeSearch()}

@@ -64,18 +64,18 @@ export function MethodBadge({ method, label }: { method: InstallMethod; label?: 
   )
 }
 
-export function UpdateBadge({ state, loading, compact }: { state?: UpdateState; loading?: boolean; compact?: boolean }) {
+export function UpdateBadge({ state, loading }: { state?: UpdateState; loading?: boolean }) {
   if (loading)
     return (
       <span className="chip">
-        <Loader2 className="h-3.5 w-3.5 animate-spin" /> {!compact && 'Checking…'}
+        <Loader2 className="h-3.5 w-3.5 animate-spin" /> Checking…
       </span>
     )
   if (!state) return null
   const Icon = UPDATE_ICONS[state]
   return (
     <span className={`chip border ${UPDATE_COLORS[state]}`} title={UPDATE_LABELS[state]}>
-      <Icon className="h-3.5 w-3.5" /> {!compact && UPDATE_LABELS[state]}
+      <Icon className="h-3.5 w-3.5" /> {UPDATE_LABELS[state]}
     </span>
   )
 }

@@ -1,15 +1,13 @@
-import { ExternalLink, GitBranch, Info, Link2, Package, RefreshCw, Terminal, TriangleAlert } from 'lucide-react'
+import { ExternalLink, GitBranch, Info, Link2, Package, Terminal, TriangleAlert } from 'lucide-react'
 import type { Skill, UpdateStatus } from '@shared/types'
 import { tildify } from '../lib/format'
 import { MethodBadge, UpdateBadge } from './Badges'
-import { CommandBlock, CopyButton } from './CommandBlock'
+import { CopyButton } from './CommandBlock'
 
 interface Props {
   skill: Skill
   home: string
   update?: UpdateStatus
-  checking: boolean
-  onCheck: () => void
 }
 
 function Row({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
@@ -21,21 +19,6 @@ function Row({ label, children, mono }: { label: string; children: React.ReactNo
   )
 }
 
-function Section({ title, icon, children, action }: { title: string; icon?: React.ReactNode; children: React.ReactNode; action?: React.ReactNode }) {
-  return (
-    <section className="space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold flex items-center gap-2">
-          {icon}
-          {title}
-        </h3>
-        {action}
-      </div>
-      {children}
-    </section>
-  )
-}
-
 function httpUrl(remote?: string): string | undefined {
   if (!remote) return undefined
   if (/^https?:\/\//.test(remote)) return remote.replace(/\.git$/, '')
@@ -44,7 +27,7 @@ function httpUrl(remote?: string): string | undefined {
   return undefined
 }
 
-export function ManagePanel({ skill, home, update, checking, onCheck }: Props) {
+export function InfoPanel({ skill, home, update }: Props) {
   const { install } = skill
   const git = install.git
   const npm = install.npm
@@ -54,8 +37,11 @@ export function ManagePanel({ skill, home, update, checking, onCheck }: Props) {
 
   return (
     <div className="p-6 max-w-4xl space-y-8 fade-in">
-      <Section title="How it was installed" icon={<Info className="h-4 w-4 text-[var(--fg-muted)]" />}>
-        <div className="surface p-4 space-y-3">
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold flex items-center gap-2">
+          <Info className="h-4 w-4 text-[var(--fg-muted)]" /> How it was installed
+        </h3>
+        <div className="border border-[var(--border)] rounded-md bg-[var(--bg)] p-4 space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <MethodBadge method={install.method} label={install.label} />
             {update && <UpdateBadge state={update.state} />}
@@ -114,52 +100,7 @@ export function ManagePanel({ skill, home, update, checking, onCheck }: Props) {
             )}
           </div>
         </div>
-      </Section>
-
-      <Section
-        title="Updates"
-        icon={<RefreshCw className="h-4 w-4 text-[var(--fg-muted)]" />}
-        action={
-          install.updateCheckable && (
-            <button type="button" className="btn h-7 text-xs" onClick={onCheck} disabled={checking}>
-              <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} /> {checking ? 'Checking…' : 'Check now'}
-            </button>
-          )
-        }
-      >
-        <div className="surface p-4 space-y-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <UpdateBadge state={update?.state} loading={checking && !update} />
-            {update?.current && (
-              <span className="text-sm font-mono text-[var(--fg-muted)]">
-                {update.current}
-                {update.latest && update.latest !== update.current ? ` → ${update.latest}` : ''}
-              </span>
-            )}
-          </div>
-          <p className="text-sm text-[var(--fg-muted)]">{update?.message ?? install.updateCheckHint ?? (install.updateCheckable ? 'Not checked yet.' : 'Update checks are not supported for this install method.')}</p>
-          {install.updateCommands.length > 0 ? (
-            <div className="space-y-2 pt-1">
-              {install.updateCommands.map((c, i) => (
-                <CommandBlock key={c.command} cmd={c} recommended={i === 0 && update?.state === 'update-available'} />
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-[var(--fg-faint)]">No update command available for this install method.</div>
-          )}
-        </div>
-      </Section>
-
-      <Section title="Remove" icon={<TriangleAlert className="h-4 w-4 text-[var(--fg-muted)]" />}>
-        <div className="space-y-2">
-          <p className="text-sm text-[var(--fg-muted)]">
-            Commands are shown, never executed. Copy the one that matches what you want and run it in a terminal.
-          </p>
-          {install.removeCommands.map((c, i) => (
-            <CommandBlock key={c.command + i} cmd={c} recommended={i === 0 && !c.danger && install.removeCommands.length > 1} />
-          ))}
-        </div>
-      </Section>
+      </section>
 
       {(install.method === 'npm' || install.method === 'git-symlink' || install.method === 'git-clone') && (
         <div className="text-xs text-[var(--fg-faint)] flex items-start gap-2">
@@ -172,7 +113,7 @@ export function ManagePanel({ skill, home, update, checking, onCheck }: Props) {
         </div>
       )}
       {skill.warnings.length > 0 && (
-        <div className="surface p-4 border-amber-500/30 bg-amber-500/5 text-sm space-y-1">
+        <div className="border border-amber-500/30 bg-amber-500/5 rounded-md p-4 text-sm space-y-1">
           <div className="font-medium flex items-center gap-2 text-amber-800 dark:text-amber-300">
             <TriangleAlert className="h-4 w-4" /> Warnings
           </div>

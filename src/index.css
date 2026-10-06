@@ -4,8 +4,8 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --color-accent-50: oklch(97% 0.02 275);
   --color-accent-100: oklch(93% 0.04 275);
@@ -20,15 +20,15 @@
 }
 
 :root {
-  --bg: oklch(98.5% 0.003 260);
-  --bg-elev: oklch(100% 0 0);
-  --bg-sunken: oklch(96.5% 0.004 260);
-  --bg-hover: oklch(95% 0.006 260);
-  --border: oklch(91% 0.006 260);
-  --border-strong: oklch(84% 0.008 260);
-  --fg: oklch(20% 0.01 260);
-  --fg-muted: oklch(50% 0.015 260);
-  --fg-faint: oklch(65% 0.012 260);
+  --bg: #f4f5f7;
+  --bg-elev: #ffffff;
+  --bg-sunken: #eef0f3;
+  --bg-hover: #e9ebef;
+  --border: #e3e5e8;
+  --border-strong: #cdd1d6;
+  --fg: #14171a;
+  --fg-muted: #5b626b;
+  --fg-faint: #7f868e;
   --ring: oklch(60% 0.2 275 / 0.35);
 
   --hl-comment: oklch(55% 0.02 260);
@@ -43,15 +43,15 @@
 }
 
 .dark {
-  --bg: oklch(17% 0.008 260);
-  --bg-elev: oklch(21% 0.009 260);
-  --bg-sunken: oklch(14.5% 0.008 260);
-  --bg-hover: oklch(25% 0.01 260);
-  --border: oklch(28% 0.01 260);
-  --border-strong: oklch(36% 0.012 260);
-  --fg: oklch(93% 0.005 260);
-  --fg-muted: oklch(68% 0.012 260);
-  --fg-faint: oklch(52% 0.012 260);
+  --bg: #141618;
+  --bg-elev: #1b1e22;
+  --bg-sunken: #16191c;
+  --bg-hover: #23272c;
+  --border: #2a2e33;
+  --border-strong: #3a3f46;
+  --fg: #e6e8ea;
+  --fg-muted: #a3a9b0;
+  --fg-faint: #7c838b;
   --ring: oklch(70% 0.17 275 / 0.4);
 
   --hl-comment: oklch(58% 0.02 260);
@@ -89,10 +89,24 @@
 
 @layer components {
   .surface {
-    @apply bg-[var(--bg-elev)] border border-[var(--border)] rounded-xl;
+    @apply bg-[var(--bg-elev)] border border-[var(--border)] rounded-lg;
+  }
+  .rail-btn {
+    @apply relative h-8 w-8 rounded-md flex items-center justify-center text-[var(--fg-faint)] hover:bg-[var(--bg-hover)] hover:text-[var(--fg)]
+      transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer;
+  }
+  .rail-btn.on {
+    @apply bg-accent-500/10 text-accent-600 dark:text-accent-300;
+  }
+  .qchip {
+    @apply inline-flex items-center gap-1 h-[22px] px-2 rounded text-[11.5px] text-[var(--fg-muted)] border border-[var(--border)] hover:text-[var(--fg)]
+      transition-colors whitespace-nowrap cursor-pointer select-none tabular-nums;
+  }
+  .qchip.on {
+    @apply bg-[var(--fg)] text-[var(--bg-elev)] border-[var(--fg)];
   }
   .btn {
-    @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm font-medium border border-[var(--border)]
+    @apply inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-sm font-medium border border-[var(--border)]
       bg-[var(--bg-elev)] hover:bg-[var(--bg-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed
       cursor-pointer select-none;
   }

@@ -9,7 +9,8 @@ The app never runs a mutating command itself. It only shows you commands to copy
 
 - Scans global skill directories for Claude Code, Codex, Cursor, Gemini CLI, Copilot, Windsurf, Kiro, OpenCode, Amp, Goose, Cline, Roo Code, the universal `.agents/skills` folder, and Claude Code plugins. Project folders can be added from the UI (or via `SKILLS_MANAGER_ROOTS`).
 - Skills that are symlinked into several agent directories are shown once, with every location listed.
-- Rendered `SKILL.md` (GitHub-flavoured markdown, syntax-highlighted code, collapsible frontmatter), plus a file browser for everything else in the skill (scripts, references, assets). Relative links in the markdown open the target file.
+- Rendered `SKILL.md` (GitHub-flavoured markdown, syntax-highlighted code, collapsible frontmatter) with a heading outline, plus a file browser for everything else in the skill (scripts, references, assets). The file tree can be hidden to give a script or reference file the full width. Relative links in the markdown open the target file.
+- Update and remove commands sit in a **Commands** panel under the document, collapsed by default so the document keeps the space; the **Info** tab explains how the skill was installed and whether it is current.
 - Install-method detection and tailored commands:
 
   | Detected as | How it's recognised | Remove | Update |
@@ -26,11 +27,12 @@ The app never runs a mutating command itself. It only shows you commands to copy
   - git: `git ls-remote` against the tracked branch, no fetch, no working-tree changes
   - npm: installed version vs. the registry `latest`
   - `skills` CLI: latest upstream commit touching the skill's path (GitHub API) vs. the install time in the lockfile
-- Codex's bundled skills (`~/.codex/skills/.system`) are hidden by default. Flip the "Hide Codex built-ins" switch in the sidebar, click "show them" under the list, or select the "Codex built-in" install-method filter to see them. The choice is remembered.
+- Codex's bundled skills (`~/.codex/skills/.system`) are hidden by default. Pick the "Built-ins" quick filter above the list, flip the "Hide Codex built-ins" switch in the filters panel, or click "show" in the status bar to see them. The choice is remembered.
+- Quick filters above the list (All, Attention, Symlinked, Plugins, Built-ins); the full filters (agent, scope, install method, update status) and the scanned locations open from the rail or with `[`.
 - Light, dark and system theme.
-- Reading mode (the expand icon in the skill header, or `\`): hides the filter sidebar and the skill list, collapses the header to one row and centres the document. Remembered across reloads; focusing the search box brings the list back.
-- On laptop-width windows the filter sidebar starts collapsed (`[` or the header button toggles it) and the heading outline opens as a popover instead of taking a column.
-- Keyboard: `/` focuses search, `\` toggles reading mode, `[` toggles the filter sidebar.
+- Reading mode (the expand icon in the rail or tab strip, or `\`): hides the filters panel and the skill list so the document takes the width. Remembered across reloads; `/` brings the list back with the search box focused.
+- The heading outline sits beside the document on wide panes and opens as a popover on narrow ones.
+- Keyboard: `/` focuses search, `j`/`k` (or the arrow keys) move through the list, `\` toggles reading mode, `[` toggles the filters panel.
 
 ## Running
 

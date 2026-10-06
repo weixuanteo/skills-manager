@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, File, FileCode2, FileText, Folder, FolderOpen, Loader2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, File, FileCode2, FileText, Folder, FolderOpen, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Suspense, use, useState } from 'react'
 import type { FileEntry, Skill } from '@shared/types'
 import type { FileResult } from '../lib/api'
@@ -7,6 +7,9 @@ import { CopyButton } from './CommandBlock'
 import { MarkdownDocument } from './MarkdownDocument'
 import { splitFrontmatter } from '@shared/frontmatter'
 import { CodeView } from './CodeView'
+import { usePersistedBool } from '../hooks/usePersisted'
+
+const TREE_KEY = 'sm-filetree'
 
 function iconFor(e: FileEntry, open: boolean) {
   if (e.type === 'dir') return open ? <FolderOpen className="h-4 w-4 text-accent-500" /> : <Folder className="h-4 w-4 text-accent-500" />
@@ -95,6 +98,7 @@ function FileView({ path, content, raw, onSelect }: { path: string; content: Pro
 export function FileBrowser({ skill, file, onSelect }: Props) {
   const [openDirs, setOpenDirs] = useState(() => new Set(ancestorsOf(file.path)))
   const [raw, setRaw] = useState(false)
+  const [treeOpen, setTreeOpen] = usePersistedBool(TREE_KEY, true)
 
   const toggle = (p: string) =>
     setOpenDirs((prev) => {
@@ -110,12 +114,17 @@ export function FileBrowser({ skill, file, onSelect }: Props) {
   }
 
   return (
-    <div className="grid grid-cols-[240px_1fr] grid-rows-[minmax(0,1fr)] h-full min-h-0">
-      <aside className="min-h-0 border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
-        <Tree entries={skill.files} depth={0} selected={file.path} onSelect={select} openDirs={openDirs} toggle={toggle} />
-      </aside>
+    <div className={`grid grid-rows-[minmax(0,1fr)] h-full min-h-0 ${treeOpen ? 'grid-cols-[240px_1fr]' : 'grid-cols-[1fr]'}`}>
+      {treeOpen && (
+        <aside className="min-h-0 border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
+          <Tree entries={skill.files} depth={0} selected={file.path} onSelect={select} openDirs={openDirs} toggle={toggle} />
+        </aside>
+      )}
       <section className="min-w-0 min-h-0 flex flex-col">
-        <div className="flex items-center gap-2 px-4 h-10 border-b border-[var(--border)] text-xs text-[var(--fg-muted)] shrink-0">
+        <div className="flex items-center gap-2 pl-2 pr-4 h-10 border-b border-[var(--border)] text-xs text-[var(--fg-muted)] shrink-0">
+          <button type="button" className="btn btn-ghost btn-icon h-7 w-7" onClick={() => setTreeOpen(!treeOpen)} aria-pressed={treeOpen} title={treeOpen ? 'Hide file tree' : 'Show file tree'}>
+            {treeOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+          </button>
           <span className="font-mono truncate">{file.path}</span>
           <Suspense fallback={null}>
             <FileToolbar content={file.content} raw={raw} setRaw={setRaw} />
