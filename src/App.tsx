@@ -1,8 +1,10 @@
 import { Inbox, PanelLeftOpen, Search, TriangleAlert, X } from 'lucide-react'
 import { type ReactNode, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
 import { flushSync } from 'react-dom'
-import type { AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
+import type { ActionResult, AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
+import { ActionPanel, type ActionState } from './components/ActionPanel'
 import { ClaudeIcon, CodexIcon } from './components/BrandIcons'
+import { Discover } from './components/discover/Discover'
 import { ProjectRootsDialog } from './components/ProjectRootsDialog'
 import { Rail } from './components/Rail'
 import { Sidebar } from './components/Sidebar'
@@ -64,6 +66,8 @@ const firstScan = loadScan(false)
 
 const bump = <K,>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1)
 
+type Page = 'installed' | 'discover'
+
 function syncUrl(skill: string | null, tab: Tab) {
   const url = new URL(location.href)
   if (skill) url.searchParams.set('skill', skill)
@@ -96,6 +100,8 @@ export default function App() {
     const t = new URLSearchParams(location.search).get('tab')
     return t === 'files' || t === 'info' ? t : 'readme'
   })
+  const [page, setPageState] = useState<Page>(() => (new URLSearchParams(location.search).get('view') === 'discover' ? 'discover' : 'installed'))
+  const [action, setAction] = useState<ActionState | null>(null)
   const [rootsOpen, setRootsOpen] = useState(false)
   const [focus, setFocus] = usePersistedBool(FOCUS_KEY, false)
   const [sidebarOpen, setSidebarOpen] = usePersistedBool(SIDEBAR_KEY, false)
@@ -109,6 +115,28 @@ export default function App() {
   const toggleSidebar = () => {
     setSidebarOpen(focus || !sidebarOpen)
     if (focus) setFocus(false)
+  }
+
+  const setPage = (v: Page) => {
+    setPageState(v)
+    const url = new URL(location.href)
+    if (v === 'discover') url.searchParams.set('view', 'discover')
+    else {
+      url.searchParams.delete('view')
+      url.searchParams.delete('repo')
+    }
+    history.replaceState(null, '', url)
+  }
+
+  /** Runs a mutating command on the server, then rescans so the lists reflect it. */
+  const runAction = async (label: string, fn: () => Promise<ActionResult>) => {
+    setAction({ label, running: true })
+    try {
+      setAction({ label, running: false, result: await fn() })
+    } catch (e) {
+      setAction({ label, running: false, error: (e as Error).message })
+    }
+    rescan()
   }
 
   const rescan = () =>
@@ -220,6 +248,8 @@ export default function App() {
     } else if (e.key === '\\') {
       e.preventDefault()
       setFocus(!focus)
+    } else if (page === 'discover') {
+      return
     } else if (e.key === '[') {
       e.preventDefault()
       toggleSidebar()
@@ -250,6 +280,8 @@ export default function App() {
   return (
     <div className="h-full flex">
       <Rail
+        page={page}
+        onToggleDiscover={() => setPage(page === 'discover' ? 'installed' : 'discover')}
         onCheckUpdates={checkAll}
         checking={checking}
         updatesAvailable={updatesAvailable}
@@ -264,131 +296,145 @@ export default function App() {
         theme={theme}
         setTheme={setTheme}
       />
-      {scan && sidebarOpen && !focus && (
+      {scan && sidebarOpen && !focus && page === 'installed' && (
         <Sidebar scan={scan} facets={facets} setFacets={setFacets} counts={view.counts} onManageRoots={() => setRootsOpen(true)} />
       )}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="flex-1 flex min-h-0">
-          {!focus && (
-            <div className="w-[300px] 2xl:w-[340px] shrink-0 border-r border-[var(--border)] bg-[var(--bg-elev)] flex flex-col min-h-0">
-              <div className="px-3 pt-2.5 pb-2 border-b border-[var(--border)] space-y-2 shrink-0">
-                <div className="flex items-center gap-2 text-[13px] font-semibold">
-                  Skills
-                  {updatesAvailable > 0 && (
-                    <span className="ml-auto text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
-                      {updatesAvailable} update{updatesAvailable === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </div>
-                <label className="relative block">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--fg-faint)]" />
-                  <input
-                    ref={searchRef}
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search name, description, path…"
-                    aria-label="Search skills"
-                    className="w-full h-7 pl-8 pr-8 rounded-md border border-[var(--border)] bg-[var(--bg)] text-[12.5px] placeholder:text-[var(--fg-faint)] focus:border-accent-500/60 transition-colors"
-                  />
-                  {query ? (
-                    <button type="button" onClick={() => setQuery('')} className="absolute right-1 top-1/2 -translate-y-1/2 btn btn-ghost h-5 w-5 px-0 justify-center" aria-label="Clear search">
-                      <X className="h-3 w-3" />
-                    </button>
-                  ) : (
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 kbd">/</span>
-                  )}
-                </label>
-                {view.segments.length > 1 && (
-                  <div className="seg" role="radiogroup" aria-label="Source">
-                    {view.segments.map((id, i) => {
-                      const on = view.active === id
-                      return (
-                        <button key={id} type="button" role="radio" aria-checked={on} className={`seg-btn ${on ? 'on' : ''}`} onClick={() => setSource(id)} title={`${SOURCE_HINTS[id]} (${i + 1})`}>
-                          {SOURCE_ICONS[id]}
-                          {SOURCE_LABELS[id]} <span className="opacity-60">{view.counts.sources.get(id) ?? 0}</span>
-                          {!on && view.counts.sourceAttention.has(id) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" role="img" aria-label="Needs attention" title="Some skills here need attention" />}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
-                {(view.counts.attention > 0 || facets.attention || refinements > 0) && (
-                  <div className="flex items-center gap-2 text-[11.5px]">
-                    {(view.counts.attention > 0 || facets.attention) && (
-                      <button type="button" aria-pressed={facets.attention} className={`qchip ${facets.attention ? 'on' : ''}`} onClick={() => setFacets({ ...facets, attention: !facets.attention })}>
-                        <TriangleAlert className="h-3 w-3" /> Needs attention <span className="opacity-60">{view.counts.attention}</span>
-                      </button>
-                    )}
-                    {refinements > 0 && (
-                      <span className="ml-auto flex items-center gap-1.5 text-[var(--fg-muted)] tabular-nums">
-                        <button type="button" className="hover:text-[var(--fg)] hover:underline" onClick={() => setSidebarOpen(true)} title="Show filters ([)">
-                          {refinements} filter{refinements === 1 ? '' : 's'}
-                        </button>
-                        ·
-                        <button type="button" className="text-accent-600 dark:text-accent-300 hover:underline" onClick={() => setFacets({ ...emptyFacets(), attention: facets.attention })}>
-                          Clear
-                        </button>
+      <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
+        {page === 'discover' && scan ? (
+          <Discover
+            scan={scan}
+            focus={focus}
+            setFocus={setFocus}
+            busy={!!action?.running}
+            onInstall={(req, label) => runAction(label, () => api.install(req))}
+            searchRef={searchRef}
+          />
+        ) : (
+          <div className="flex-1 flex min-h-0">
+            {!focus && (
+              <div className="w-[300px] 2xl:w-[340px] shrink-0 border-r border-[var(--border)] bg-[var(--bg-elev)] flex flex-col min-h-0">
+                <div className="px-3 pt-2.5 pb-2 border-b border-[var(--border)] space-y-2 shrink-0">
+                  <div className="flex items-center gap-2 text-[13px] font-semibold">
+                    Skills
+                    {updatesAvailable > 0 && (
+                      <span className="ml-auto text-[11px] font-medium text-amber-700 dark:text-amber-400 tabular-nums">
+                        {updatesAvailable} update{updatesAvailable === 1 ? '' : 's'}
                       </span>
                     )}
                   </div>
-                )}
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto scroll-thin">
-                {error && (
-                  <div className="m-3 surface p-3 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
-                    <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0" /> {error}
-                  </div>
-                )}
-                {scan?.issues.length ? (
-                  <div className="m-3 surface p-3 text-xs text-amber-800 dark:text-amber-300 border-amber-500/30 bg-amber-500/5 space-y-1">
-                    {scan.issues.map((i) => (
-                      <div key={i} className="font-mono break-all">{i}</div>
-                    ))}
-                  </div>
-                ) : null}
-                {scan &&
-                  (filtered.length || !skills.length ? (
-                    <SkillList skills={filtered} selectedId={selected?.id ?? null} onSelect={select} updates={updates} checking={checking} subNames={subNames} />
-                  ) : (
-                    <NoMatches
-                      active={view.active}
-                      query={query}
-                      elsewhere={view.segments.filter((id) => id !== view.active && id !== 'all').map((id) => ({ id, count: view.counts.sources.get(id) ?? 0 })).filter((x) => x.count > 0)}
-                      onSource={setSource}
-                      onClear={facets.attention || refinements > 0 ? () => setFacets(emptyFacets()) : undefined}
+                  <label className="relative block">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--fg-faint)]" />
+                    <input
+                      ref={searchRef}
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search name, description, path…"
+                      aria-label="Search skills"
+                      className="w-full h-7 pl-8 pr-8 rounded-md border border-[var(--border)] bg-[var(--bg)] text-[12.5px] placeholder:text-[var(--fg-faint)] focus:border-accent-500/60 transition-colors"
                     />
-                  ))}
-              </div>
-            </div>
-          )}
-          <main className="flex-1 min-w-0 min-h-0 bg-[var(--bg)]">
-            {selected && scan ? (
-              <SkillDetail
-                key={selected.id}
-                skill={selected}
-                home={scan.home}
-                update={updates[selected.id]}
-                checking={checking || checkingOne === selected.id}
-                onCheck={() => checkOne(selected.id)}
-                tab={tab}
-                setTab={setTab}
-                focus={focus}
-                setFocus={setFocus}
-              />
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-[var(--fg-faint)] gap-3">
-                <Inbox className="h-10 w-10" />
-                <div className="text-sm">{scan && skills.length === 0 ? 'No skills found in any known directory.' : 'Select a skill to view it.'}</div>
-                {focus && (
-                  <button type="button" className="btn" onClick={() => setFocus(false)}>
-                    <PanelLeftOpen className="h-4 w-4" /> Show skill list
-                  </button>
-                )}
+                    {query ? (
+                      <button type="button" onClick={() => setQuery('')} className="absolute right-1 top-1/2 -translate-y-1/2 btn btn-ghost h-5 w-5 px-0 justify-center" aria-label="Clear search">
+                        <X className="h-3 w-3" />
+                      </button>
+                    ) : (
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 kbd">/</span>
+                    )}
+                  </label>
+                  {view.segments.length > 1 && (
+                    <div className="seg" role="radiogroup" aria-label="Source">
+                      {view.segments.map((id, i) => {
+                        const on = view.active === id
+                        return (
+                          <button key={id} type="button" role="radio" aria-checked={on} className={`seg-btn ${on ? 'on' : ''}`} onClick={() => setSource(id)} title={`${SOURCE_HINTS[id]} (${i + 1})`}>
+                            {SOURCE_ICONS[id]}
+                            {SOURCE_LABELS[id]} <span className="opacity-60">{view.counts.sources.get(id) ?? 0}</span>
+                            {!on && view.counts.sourceAttention.has(id) && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" role="img" aria-label="Needs attention" title="Some skills here need attention" />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                  {(view.counts.attention > 0 || facets.attention || refinements > 0) && (
+                    <div className="flex items-center gap-2 text-[11.5px]">
+                      {(view.counts.attention > 0 || facets.attention) && (
+                        <button type="button" aria-pressed={facets.attention} className={`qchip ${facets.attention ? 'on' : ''}`} onClick={() => setFacets({ ...facets, attention: !facets.attention })}>
+                          <TriangleAlert className="h-3 w-3" /> Needs attention <span className="opacity-60">{view.counts.attention}</span>
+                        </button>
+                      )}
+                      {refinements > 0 && (
+                        <span className="ml-auto flex items-center gap-1.5 text-[var(--fg-muted)] tabular-nums">
+                          <button type="button" className="hover:text-[var(--fg)] hover:underline" onClick={() => setSidebarOpen(true)} title="Show filters ([)">
+                            {refinements} filter{refinements === 1 ? '' : 's'}
+                          </button>
+                          ·
+                          <button type="button" className="text-accent-600 dark:text-accent-300 hover:underline" onClick={() => setFacets({ ...emptyFacets(), attention: facets.attention })}>
+                            Clear
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto scroll-thin">
+                  {error && (
+                    <div className="m-3 surface p-3 text-sm text-red-600 dark:text-red-400 flex items-start gap-2">
+                      <TriangleAlert className="h-4 w-4 mt-0.5 shrink-0" /> {error}
+                    </div>
+                  )}
+                  {scan?.issues.length ? (
+                    <div className="m-3 surface p-3 text-xs text-amber-800 dark:text-amber-300 border-amber-500/30 bg-amber-500/5 space-y-1">
+                      {scan.issues.map((i) => (
+                        <div key={i} className="font-mono break-all">{i}</div>
+                      ))}
+                    </div>
+                  ) : null}
+                  {scan &&
+                    (filtered.length || !skills.length ? (
+                      <SkillList skills={filtered} selectedId={selected?.id ?? null} onSelect={select} updates={updates} checking={checking} subNames={subNames} />
+                    ) : (
+                      <NoMatches
+                        active={view.active}
+                        query={query}
+                        elsewhere={view.segments.filter((id) => id !== view.active && id !== 'all').map((id) => ({ id, count: view.counts.sources.get(id) ?? 0 })).filter((x) => x.count > 0)}
+                        onSource={setSource}
+                        onClear={facets.attention || refinements > 0 ? () => setFacets(emptyFacets()) : undefined}
+                      />
+                    ))}
+                </div>
               </div>
             )}
-          </main>
-        </div>
-        <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} />
+            <main className="flex-1 min-w-0 min-h-0 bg-[var(--bg)]">
+              {selected && scan ? (
+                <SkillDetail
+                  key={selected.id}
+                  skill={selected}
+                  home={scan.home}
+                  update={updates[selected.id]}
+                  checking={checking || checkingOne === selected.id}
+                  onCheck={() => checkOne(selected.id)}
+                  tab={tab}
+                  setTab={setTab}
+                  focus={focus}
+                  setFocus={setFocus}
+                  busy={!!action?.running}
+                  onRun={(cmd) => runAction(cmd.title, () => api.run(selected.id, cmd.command))}
+                />
+              ) : (
+                <div className="h-full flex flex-col items-center justify-center text-[var(--fg-faint)] gap-3">
+                  <Inbox className="h-10 w-10" />
+                  <div className="text-sm">{scan && skills.length === 0 ? 'No skills found in any known directory.' : 'Select a skill to view it.'}</div>
+                  {focus && (
+                    <button type="button" className="btn" onClick={() => setFocus(false)}>
+                      <PanelLeftOpen className="h-4 w-4" /> Show skill list
+                    </button>
+                  )}
+                </div>
+              )}
+            </main>
+          </div>
+        )}
+        {action && <ActionPanel key={action.label + action.running} action={action} onClose={() => setAction(null)} />}
+        <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} discover={page === 'discover'} />
       </div>
       {rootsOpen && scan && <ProjectRootsDialog onClose={() => setRootsOpen(false)} onSaved={rescan} home={scan.home} />}
     </div>

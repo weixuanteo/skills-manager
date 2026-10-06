@@ -8,6 +8,7 @@ import type {
   SkillLocation,
   SkillsCliInfo,
 } from '../shared/types.ts'
+import { isUnsafeSkillName } from './actions.ts'
 import { exists, findUp, isWithin, readJson, run, shellQuote, tildify } from './util.ts'
 
 export interface DetectContext {
@@ -145,6 +146,21 @@ async function loadLock(file: string, ctx: DetectContext): Promise<SkillsLockfil
   return ctx.lockCache.get(file)!
 }
 
+/** The directory name the skills CLI installs a skill under. */
+const installDirName = (name: string) => name.toLowerCase().replace(/[^a-z0-9._]+/g, '-').replace(/^-+|-+$/g, '')
+
+/**
+ * Lockfile keys are frontmatter names ("Make Bot UI" installs as make-bot-ui). A key match wins over
+ * the upstream directory name, which only identifies skills whose key no longer matches.
+ */
+export function findLockEntry(skills: Record<string, Record<string, unknown>>, dirName: string): [string, Record<string, unknown>] | undefined {
+  const entries = Object.entries(skills)
+  return (
+    entries.find(([key]) => key === dirName || installDirName(key) === dirName) ??
+    entries.find(([, e]) => typeof e.skillPath === 'string' && path.basename(path.dirname(e.skillPath)) === dirName)
+  )
+}
+
 async function detectSkillsCli(realPath: string, locations: SkillLocation[], ctx: DetectContext): Promise<SkillsCliInfo | undefined> {
   // Check lockfiles at both the source and installed locations.
   const candidates = new Set<string>()
@@ -157,39 +173,40 @@ async function detectSkillsCli(realPath: string, locations: SkillLocation[], ctx
     consider(l.path)
     if (l.linkTarget) consider(l.linkTarget)
     consider(l.root)
+    // Project installs for a single non-universal agent skip .agents (<project>/.claude/skills/x).
+    if (l.scope === 'project') {
+      const m = /^(.*)\/\.[^/]+\/skills$/.exec(l.root)
+      if (m) candidates.add(m[1])
+    }
   }
-  candidates.add(ctx.home)
   const dirName = path.basename(realPath)
-  for (const base of candidates) {
-    const files = [
-      path.join(base, 'skills-lock.json'),
-      path.join(base, '.agents', 'skills-lock.json'),
-      path.join(base, '.agents', '.skills-lock.json'),
-      path.join(base, '.agents', 'skills', 'skills-lock.json'),
-    ]
-    for (const file of files) {
-      const lock = await loadLock(file, ctx)
-      if (!lock?.skills) continue
-      let entry: Record<string, unknown> | undefined = lock.skills[dirName]
-      if (!entry) {
-        entry = Object.values(lock.skills).find((e) => {
-          const sp = typeof e.skillPath === 'string' ? e.skillPath : ''
-          return sp && path.basename(sp) === dirName
-        })
-      }
-      if (!entry) continue
-      const str = (k: string) => (typeof entry![k] === 'string' ? (entry![k] as string) : undefined)
-      return {
-        lockfile: file,
-        source: str('source'),
-        sourceType: str('sourceType'),
-        sourceUrl: str('sourceUrl'),
-        skillPath: str('skillPath'),
-        installedAt: str('installedAt'),
-        updatedAt: str('updatedAt'),
-        hash: str('skillFolderHash') ?? str('computedHash') ?? str('hash') ?? str('commit'),
-        global: base === ctx.home,
-      }
+  // The CLI keeps global installs in ~/.agents/.skill-lock.json (or under $XDG_STATE_HOME) and
+  // project installs in <project>/skills-lock.json.
+  // A copy installed only in a project must not match a global entry of the same name, whose
+  // commands (-g) would act on the global copy.
+  const isGlobal = locations.some((l) => l.scope === 'global')
+  const globalLocks = [path.join(ctx.home, '.agents', '.skill-lock.json')]
+  if (process.env.XDG_STATE_HOME) globalLocks.push(path.join(process.env.XDG_STATE_HOME, 'skills', '.skill-lock.json'))
+  const projectLocks = [...candidates].filter((base) => base !== ctx.home).map((base) => path.join(base, 'skills-lock.json'))
+  const lockfiles = isGlobal ? [...globalLocks, ...projectLocks] : projectLocks
+  for (const file of lockfiles) {
+    const lock = await loadLock(file, ctx)
+    if (!lock?.skills) continue
+    const match = findLockEntry(lock.skills, dirName)
+    if (!match) continue
+    const [key, entry] = match
+    const str = (k: string) => (typeof entry[k] === 'string' ? (entry[k] as string) : undefined)
+    return {
+      lockfile: file,
+      name: key,
+      source: str('source'),
+      sourceType: str('sourceType'),
+      sourceUrl: str('sourceUrl'),
+      skillPath: str('skillPath'),
+      installedAt: str('installedAt'),
+      updatedAt: str('updatedAt'),
+      hash: str('skillFolderHash') ?? str('computedHash') ?? str('hash') ?? str('commit'),
+      global: globalLocks.includes(file),
     }
   }
   return undefined
@@ -312,23 +329,27 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
 
   const cli = await detectSkillsCli(realPath, locations, ctx)
   if (cli) {
-    const name = path.basename(realPath)
-    const gflag = cli.global ? ' -g' : ''
+    const name = cli.name
+    // Without a scope flag, `update` acts on project and global skills alike.
+    const scope = cli.global ? ' -g' : ' -p'
     const cd = !cli.global ? `cd ${t(path.dirname(cli.lockfile))} && ` : ''
+    // The CLI reads a name like `--all` as a flag even when quoted, so only offer the manual commands.
+    const cliCommands = !isUnsafeSkillName(name)
     return {
       method: 'skills-cli',
       label: 'skills CLI',
       summary: `Installed with the "skills" CLI from ${cli.source ?? cli.sourceUrl ?? 'a remote source'}${cli.skillPath ? ` (${cli.skillPath})` : ''}. It is tracked in ${tildify(cli.lockfile, home)}.`,
       skillsCli: cli,
       removeCommands: [
-        { title: 'Remove with the skills CLI', command: `${cd}npx skills remove ${q(name)}${gflag}`, note: 'Preferred: removes the directory, all agent symlinks and the lockfile entry.' },
+        ...(cliCommands
+          ? [{ title: 'Remove with the skills CLI', command: `${cd}npx skills remove ${q(name)}${cli.global ? ' -g' : ''} -y`, note: 'Preferred: removes the directory, all agent symlinks and the lockfile entry.' }]
+          : []),
         ...removeLinks,
-        { title: 'Delete the directory manually', command: `rm -rf ${t(realPath)}`, danger: true, note: 'Leaves a stale entry in skills-lock.json.' },
+        { title: 'Delete the directory manually', command: `rm -rf ${t(realPath)}`, danger: true, note: 'Leaves a stale entry in the skills lockfile.' },
       ],
       updateCommands: [
-        { title: 'Update this skill', command: `${cd}npx skills update ${q(name)}${gflag}` },
-        { title: 'Check all skills for updates', command: `${cd}npx skills check${gflag}` },
-        { title: 'Update all skills', command: `${cd}npx skills update${gflag}` },
+        ...(cliCommands ? [{ title: 'Update this skill', command: `${cd}npx skills update ${q(name)}${scope} -y` }] : []),
+        { title: 'Update all skills', command: `${cd}npx skills update${scope} -y` },
       ],
       updateCheckable: !!(cli.source || cli.sourceUrl),
       updateCheckHint: 'Compares the install time recorded in skills-lock.json with the latest upstream commit touching the skill.',

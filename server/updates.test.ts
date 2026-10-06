@@ -99,7 +99,7 @@ describe('skills CLI update checks', () => {
   function cliSkill(id: string, installedAt: string): Skill {
     return skill(id, {
       method: 'skills-cli',
-      skillsCli: { lockfile: '/tmp/skills-lock.json', source: 'example/repo', skillPath: 'skills/example', installedAt, global: true },
+      skillsCli: { lockfile: '/tmp/skills-lock.json', name: 'example', source: 'example/repo', skillPath: 'skills/example', installedAt, global: true },
     })
   }
 

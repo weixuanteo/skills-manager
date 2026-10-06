@@ -76,6 +76,8 @@ export interface NpmInfo {
 
 export interface SkillsCliInfo {
   lockfile: string
+  /** Lockfile key: the skill's frontmatter name, which the CLI's commands take. */
+  name: string
   source?: string
   sourceType?: string
   sourceUrl?: string
@@ -172,4 +174,62 @@ export interface FileContent {
 
 export interface AppConfig {
   projectRoots: string[]
+}
+
+export interface RepoRef {
+  owner: string
+  repo: string
+  /** Branch, tag or SHA from the input; absent means the default branch. */
+  ref?: string
+  /** Directory inside the repo to look under. */
+  subpath?: string
+}
+
+export interface RemoteSkill {
+  name: string
+  description: string
+  /** Skill directory relative to the repo root. */
+  dir: string
+  frontmatter: Record<string, unknown>
+  files: FileEntry[]
+  fileCount: number
+  totalSize: number
+  /** Paths of files with the executable bit set, relative to the skill directory. */
+  executables: string[]
+}
+
+export interface RemoteRepo extends RepoRef {
+  /** Commit every file in this listing was read at. */
+  sha: string
+  skills: RemoteSkill[]
+  skipped: { dir: string; reason: string }[]
+}
+
+export interface SearchHit {
+  /** skills.sh id, e.g. "vercel-labs/agent-skills/react-best-practices". */
+  id: string
+  name: string
+  /** "owner/repo" as accepted by `npx skills add`. */
+  source: string
+  installs: number
+}
+
+export type InstallScope = { kind: 'global' } | { kind: 'project'; path: string }
+
+export interface InstallRequest {
+  owner: string
+  repo: string
+  ref?: string
+  /** Commit of the listing the skills were picked from. */
+  sha: string
+  /** Skill directories (relative to the repo root) to install. */
+  dirs: string[]
+  agents: string[]
+  scope: InstallScope
+}
+
+export interface ActionResult {
+  ok: boolean
+  command: string
+  output: string
 }

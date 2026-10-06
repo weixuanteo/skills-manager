@@ -1,6 +1,6 @@
 import { BookOpen, FileWarning, FolderTree, Info, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
 import { Suspense, use, useState, useTransition } from 'react'
-import type { Skill, UpdateStatus } from '@shared/types'
+import type { Command, Skill, UpdateStatus } from '@shared/types'
 import { loadFile, type FileResult } from '../lib/api'
 import { formatBytes, timeAgo, tildify } from '../lib/format'
 import { splitFrontmatter } from '@shared/frontmatter'
@@ -29,6 +29,8 @@ interface Props {
   setTab: (t: Tab) => void
   focus: boolean
   setFocus: (v: boolean) => void
+  busy: boolean
+  onRun: (cmd: Command) => void
 }
 
 function DocHeader({ skill, update, checking }: { skill: Skill; update?: UpdateStatus; checking: boolean }) {
@@ -101,7 +103,7 @@ function Readme({ content, frontmatter, header, onOpenRelative }: { content: Pro
   )
 }
 
-export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus }: Props) {
+export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus, busy, onRun }: Props) {
   const readmePath = skill.skillFile.slice(skill.realPath.length + 1) || 'SKILL.md'
   // File contents are promises read with `use()`; this component remounts per skill (keyed by id).
   const [readme, setReadme] = useState(() => loadFile(skill.id, readmePath))
@@ -171,14 +173,14 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
               <Readme content={readme} frontmatter={skill.frontmatter} header={<DocHeader skill={skill} update={update} checking={checking} />} onOpenRelative={openRelative} />
             </Suspense>
           )}
-          {tab === 'files' && <FileBrowser skill={skill} file={file} onSelect={openFile} />}
+          {tab === 'files' && <FileBrowser files={skill.files} file={file} onSelect={openFile} />}
           {tab === 'info' && (
             <div className="h-full overflow-y-auto scroll-thin">
               <InfoPanel skill={skill} home={home} update={update} />
             </div>
           )}
         </div>
-        <CommandsDrawer skill={skill} update={update} checking={checking} onCheck={onCheck} />
+        <CommandsDrawer skill={skill} update={update} checking={checking} onCheck={onCheck} busy={busy} onRun={onRun} />
       </div>
     </div>
   )

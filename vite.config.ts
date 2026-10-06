@@ -10,7 +10,8 @@ export default defineConfig({
   },
   server: {
     port: 5173,
-    proxy: { '/api': 'http://127.0.0.1:5178' },
+    // Keep the browser's Host header: the API refuses writes whose Origin and Host differ.
+    proxy: { '/api': { target: 'http://127.0.0.1:5178', changeOrigin: false } },
   },
   build: { outDir: 'dist', emptyOutDir: true },
 })

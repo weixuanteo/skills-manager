@@ -1,6 +1,6 @@
 import { ChevronDown, ChevronRight, File, FileCode2, FileText, Folder, FolderOpen, Loader2, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Suspense, use, useState } from 'react'
-import type { FileEntry, Skill } from '@shared/types'
+import type { FileEntry } from '@shared/types'
 import type { FileResult } from '../lib/api'
 import { formatBytes } from '../lib/format'
 import { CopyButton } from './CommandBlock'
@@ -51,7 +51,7 @@ export interface OpenFile {
 }
 
 interface Props {
-  skill: Skill
+  files: FileEntry[]
   file: OpenFile
   onSelect: (p: string) => void
 }
@@ -95,7 +95,7 @@ function FileView({ path, content, raw, onSelect }: { path: string; content: Pro
   )
 }
 
-export function FileBrowser({ skill, file, onSelect }: Props) {
+export function FileBrowser({ files, file, onSelect }: Props) {
   const [openDirs, setOpenDirs] = useState(() => new Set(ancestorsOf(file.path)))
   const [raw, setRaw] = useState(false)
   const [treeOpen, setTreeOpen] = usePersistedBool(TREE_KEY, true)
@@ -117,7 +117,7 @@ export function FileBrowser({ skill, file, onSelect }: Props) {
     <div className={`grid grid-rows-[minmax(0,1fr)] h-full min-h-0 ${treeOpen ? 'grid-cols-[240px_1fr]' : 'grid-cols-[1fr]'}`}>
       {treeOpen && (
         <aside className="min-h-0 border-r border-[var(--border)] overflow-y-auto scroll-thin py-2 pr-1">
-          <Tree entries={skill.files} depth={0} selected={file.path} onSelect={select} openDirs={openDirs} toggle={toggle} />
+          <Tree entries={files} depth={0} selected={file.path} onSelect={select} openDirs={openDirs} toggle={toggle} />
         </aside>
       )}
       <section className="min-w-0 min-h-0 flex flex-col">

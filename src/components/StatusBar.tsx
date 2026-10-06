@@ -5,9 +5,11 @@ interface Props {
   shown: number
   /** Number of source segments reachable with the digit keys; 0 hides the hint. */
   sourceKeys: number
+  /** Discover has its own list, so only the global keys apply. */
+  discover: boolean
 }
 
-export function StatusBar({ scan, shown, sourceKeys }: Props) {
+export function StatusBar({ scan, shown, sourceKeys, discover }: Props) {
   return (
     <div className="h-[26px] shrink-0 border-t border-[var(--border)] bg-[var(--bg-elev)] flex items-center gap-4 px-3 text-[11.5px] text-[var(--fg-muted)] whitespace-nowrap overflow-hidden">
       {scan ? (
@@ -19,20 +21,24 @@ export function StatusBar({ scan, shown, sourceKeys }: Props) {
       )}
       <span className="flex-1" />
       <span className="hidden md:flex items-center gap-4 text-[var(--fg-faint)]">
-        <span>
-          <kbd className="kbd">j</kbd> <kbd className="kbd">k</kbd> move
-        </span>
+        {!discover && (
+          <span>
+            <kbd className="kbd">j</kbd> <kbd className="kbd">k</kbd> move
+          </span>
+        )}
         <span>
           <kbd className="kbd">/</kbd> search
         </span>
-        {sourceKeys > 0 && (
+        {!discover && sourceKeys > 0 && (
           <span>
             <kbd className="kbd">1</kbd>–<kbd className="kbd">{sourceKeys}</kbd> source
           </span>
         )}
-        <span>
-          <kbd className="kbd">[</kbd> filters
-        </span>
+        {!discover && (
+          <span>
+            <kbd className="kbd">[</kbd> filters
+          </span>
+        )}
         <span>
           <kbd className="kbd">\</kbd> reading mode
         </span>

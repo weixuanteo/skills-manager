@@ -127,8 +127,9 @@ async function fetchLatestCommit(gh: { owner: string; repo: string; ref?: string
 async function checkSkillsCli(skill: Skill): Promise<Status> {
   const cli = skill.install.skillsCli!
   const gh = parseGithubSource(cli)
-  if (!gh) return { state: 'unsupported', message: `Cannot resolve "${cli.source ?? cli.sourceUrl}" to a GitHub repository. Run "npx skills check".`, checkedAt: now() }
-  const skillPath = cli.skillPath ?? ''
+  if (!gh) return { state: 'unsupported', message: `Cannot resolve "${cli.source ?? cli.sourceUrl}" to a GitHub repository. Run "npx skills update" to refresh it.`, checkedAt: now() }
+  // Lockfiles record the SKILL.md path; watch the whole skill directory.
+  const skillPath = (cli.skillPath ?? '').replace(/\/?SKILL\.md$/i, '')
   const upstream = await lookup(`skills-cli:${gh.owner}/${gh.repo}:${skillPath}:${gh.ref ?? ''}`, () => fetchLatestCommit(gh, skillPath))
   if (upstream.error) return { state: 'error', message: upstream.error, checkedAt: now() }
   if (!upstream.sha) return { state: 'unknown', message: 'No commits found for this path upstream.', checkedAt: now() }
@@ -147,7 +148,7 @@ async function checkSkillsCli(skill: Skill): Promise<Status> {
       return { state: 'up-to-date', current: installed.slice(0, 10), latest: `${short} (${latestDate.slice(0, 10)})`, message: 'No upstream commits since installation.', checkedAt: now() }
     }
   }
-  return { state: 'unknown', latest: short, message: 'Lockfile has no timestamp or hash to compare. Run "npx skills check".', checkedAt: now() }
+  return { state: 'unknown', latest: short, message: 'Lockfile has no timestamp or hash to compare. Run "npx skills update" to refresh it.', checkedAt: now() }
 }
 
 export async function checkUpdate(skill: Skill): Promise<UpdateStatus> {
