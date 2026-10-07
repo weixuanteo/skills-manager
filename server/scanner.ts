@@ -6,7 +6,8 @@ import { AGENTS } from './agents.ts'
 import { createDetectContext, detectInstall } from './detect.ts'
 import { exists, hashId, isDir, parseFrontmatter, readJson, tildify } from './util.ts'
 
-const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.cache'])
+// .trash and .staging are Claude Code's own scratch folders inside ~/.claude/skills; it loads no skills from them.
+const SKIP_DIRS = new Set(['node_modules', '.git', '__pycache__', '.venv', 'venv', 'dist', 'build', '.cache', '.trash', '.staging'])
 const MAX_TREE_ENTRIES = 600
 const MAX_TREE_DEPTH = 5
 
@@ -25,7 +26,7 @@ async function findSkillFile(dir: string): Promise<string | undefined> {
   return undefined
 }
 
-async function listSkillDirs(root: string, depth = 0): Promise<{ dir: string; skillFile: string }[]> {
+export async function listSkillDirs(root: string, depth = 0): Promise<{ dir: string; skillFile: string }[]> {
   const out: { dir: string; skillFile: string }[] = []
   let entries: import('node:fs').Dirent[]
   try {
@@ -45,6 +46,25 @@ async function listSkillDirs(root: string, depth = 0): Promise<{ dir: string; sk
     }
   }
   return out
+}
+
+/** Symlinks above the scan root (e.g. a symlinked $HOME) don't count; only those at or below it do. */
+export async function resolveSkillDir(dir: string, root: string, realRoot: string): Promise<{ realPath: string; isSymlink: boolean; linkTarget?: string }> {
+  let isSymlink = false
+  let linkTarget: string | undefined
+  try {
+    const lst = await fs.lstat(dir)
+    isSymlink = lst.isSymbolicLink()
+    if (isSymlink) linkTarget = await fs.readlink(dir)
+  } catch {
+  }
+  // A parent directory inside the root may be a symlink even when this directory is not.
+  const realPath = await fs.realpath(dir)
+  if (!isSymlink && realPath !== path.join(realRoot, path.relative(root, dir))) {
+    isSymlink = true
+    linkTarget = realPath
+  }
+  return { realPath, isSymlink, linkTarget: linkTarget ? path.resolve(path.dirname(dir), linkTarget) : undefined }
 }
 
 async function buildTree(dir: string, rel = '', depth = 0, budget = { n: 0 }): Promise<FileEntry[]> {
@@ -129,29 +149,17 @@ export async function scanSkills(projectRoots: string[]): Promise<ScanResult> {
     const present = await isDir(r.path)
     let count = 0
     if (present) {
+      const realRoot = await fs.realpath(r.path)
       const found = await listSkillDirs(r.path)
       for (const f of found) {
         count++
-        let isSymlink = false
-        let linkTarget: string | undefined
-        try {
-          const lst = await fs.lstat(f.dir)
-          isSymlink = lst.isSymbolicLink()
-          if (isSymlink) linkTarget = await fs.readlink(f.dir)
-        } catch {
-        }
-        // A parent directory may be a symlink even when this directory is not.
-        const realPath = await fs.realpath(f.dir)
-        if (!isSymlink && realPath !== f.dir) {
-          isSymlink = true
-          linkTarget = realPath
-        }
+        const { realPath, isSymlink, linkTarget } = await resolveSkillDir(f.dir, r.path, realRoot)
         const loc: SkillLocation = {
           path: f.dir,
           agent: r.agent,
           scope: r.scope,
           isSymlink,
-          linkTarget: linkTarget ? path.resolve(path.dirname(f.dir), linkTarget) : undefined,
+          linkTarget,
           root: r.path,
         }
         const entry = byReal.get(realPath)
