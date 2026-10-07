@@ -1,8 +1,9 @@
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, Play, RefreshCw, Terminal, TriangleAlert } from 'lucide-react'
-import { useState } from 'react'
+import { Check, ChevronDown, ChevronUp, Copy, Loader2, Play, RefreshCw, Terminal, Trash2, TriangleAlert } from 'lucide-react'
+import { type ComponentProps, useState } from 'react'
 import type { Command, Skill, UpdateStatus } from '@shared/types'
 import { usePersistedBool } from '../hooks/usePersisted'
 import { useCopy } from './CommandBlock'
+import { ConfirmDialog } from './ConfirmDialog'
 
 const OPEN_KEY = 'sm-commands'
 
@@ -41,35 +42,6 @@ function CopyLabel({ text }: { text: string }) {
   )
 }
 
-function RunButton({ cmd, busy, onRun }: { cmd: Command; busy: boolean; onRun: (cmd: Command) => void }) {
-  const [confirming, setConfirming] = useState(false)
-  if (!confirming) {
-    return (
-      <button type="button" className="btn btn-ghost h-7 px-2 text-xs shrink-0" onClick={() => setConfirming(true)} disabled={busy} title="Run this command on this machine">
-        <Play className="h-3.5 w-3.5" /> Run
-      </button>
-    )
-  }
-  return (
-    <span className="flex items-center gap-1 shrink-0">
-      <button type="button" className="btn btn-ghost h-7 px-2 text-xs" onClick={() => setConfirming(false)}>
-        Cancel
-      </button>
-      <button
-        type="button"
-        className={`btn h-7 px-2 text-xs ${cmd.danger ? 'border-red-500/50 text-red-700 dark:text-red-400' : 'btn-primary'}`}
-        disabled={busy}
-        onClick={() => {
-          setConfirming(false)
-          onRun(cmd)
-        }}
-      >
-        Confirm
-      </button>
-    </span>
-  )
-}
-
 function Row({ cmd, recommended, busy, onRun }: { cmd: Command; recommended?: boolean; busy: boolean; onRun: (cmd: Command) => void }) {
   return (
     <div className="grid grid-cols-[200px_minmax(0,1fr)_auto_auto] items-center gap-3 py-1.5 border-b border-[var(--border)] last:border-b-0">
@@ -85,13 +57,18 @@ function Row({ cmd, recommended, busy, onRun }: { cmd: Command; recommended?: bo
         {cmd.command}
       </code>
       <CopyLabel text={cmd.command} />
-      <RunButton cmd={cmd} busy={busy} onRun={onRun} />
+      <button type="button" className="btn btn-ghost h-7 px-2 text-xs shrink-0" onClick={() => onRun(cmd)} disabled={busy} title="Run this command on this machine">
+        <Play className="h-3.5 w-3.5" /> Run
+      </button>
     </div>
   )
 }
 
+type Confirm = Pick<ComponentProps<typeof ConfirmDialog>, 'title' | 'verb' | 'options' | 'danger'>
+
 export function CommandsDrawer({ skill, update, checking, onCheck, busy, onRun }: Props) {
   const [open, setOpen] = usePersistedBool(OPEN_KEY, false)
+  const [confirm, setConfirm] = useState<Confirm | null>(null)
   const { install } = skill
   const commands = [...install.updateCommands, ...install.removeCommands]
   const st = stateText(skill, update, checking)
@@ -117,16 +94,43 @@ export function CommandsDrawer({ skill, update, checking, onCheck, busy, onRun }
             {checking ? 'Checking…' : 'Check now'}
           </button>
         )}
+        {install.removeCommands.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-ghost h-7 px-2 text-xs text-[var(--fg-muted)] hover:text-red-700 dark:hover:text-red-400"
+            onClick={() => setConfirm({ title: `Remove ${skill.name}?`, verb: 'Remove', options: install.removeCommands, danger: true })}
+            disabled={busy}
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Remove
+          </button>
+        )}
       </div>
       {open && (
         <div className="border-t border-[var(--border)] px-3 py-1 overflow-y-auto scroll-thin min-h-0">
           {update?.message && <p className="text-[11.5px] text-[var(--fg-muted)] py-1.5 border-b border-[var(--border)]">{update.message}</p>}
           {commands.map((c) => (
-            <Row key={c.command} cmd={c} recommended={c === install.updateCommands[0] && update?.state === 'update-available'} busy={busy} onRun={onRun} />
+            <Row
+              key={c.command}
+              cmd={c}
+              recommended={c === install.updateCommands[0] && update?.state === 'update-available'}
+              busy={busy}
+              onRun={(cmd) => setConfirm({ title: `${cmd.title}?`, verb: 'Run', options: [cmd], danger: install.removeCommands.includes(cmd) })}
+            />
           ))}
           {commands.length === 0 && <p className="text-xs text-[var(--fg-faint)] py-2">No update or remove command for this install method.</p>}
           <p className="text-[11px] text-[var(--fg-faint)] py-1.5">Copy a command into a terminal, or run it here after confirming.</p>
         </div>
+      )}
+      {confirm && (
+        <ConfirmDialog
+          {...confirm}
+          busy={busy}
+          onClose={() => setConfirm(null)}
+          onConfirm={(cmd) => {
+            setConfirm(null)
+            onRun(cmd)
+          }}
+        />
       )}
     </section>
   )

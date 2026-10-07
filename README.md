@@ -6,7 +6,7 @@ A local web app for the agent skills (`SKILL.md` folders) used by Claude Code, C
 - **See what you already have.** It scans every agent's skill directory (and any project folders you add), renders each `SKILL.md`, and works out how each skill was installed.
 - **Keep them current.** Check for updates, then update or remove a skill with the right command for how it was installed.
 
-Nothing changes on disk until you confirm. Every install, update or remove shows its exact command first, and you can copy it into a terminal instead of running it from the app.
+Nothing changes on disk until you confirm. Every install, update or remove shows its exact command in a confirmation dialog first, and you can copy it into a terminal instead of running it from the app. Everything the app runs is kept in a command log.
 
 ![Discover: browsing mattpocock/skills, three skills picked, with the install command waiting for confirmation](docs/screenshots/discover.png)
 
@@ -14,11 +14,11 @@ Nothing changes on disk until you confirm. Every install, update or remove shows
 
 ## Features
 
-- **Discover** (the compass in the rail): search [skills.sh](https://skills.sh), or paste a GitHub repository or subdirectory URL (`mattpocock/skills`, `https://github.com/cursor/plugins/tree/main/pstack/skills`) to list every skill in it. Preview each skill's `SKILL.md` and files before installing. Executable scripts are flagged. Tick the skills you want (with nothing ticked, Install takes the skill on screen), pick the agents and a scope (global or a project folder), and install them through the `skills` CLI (`npx skills add <owner>/<repo>/<dir>[#ref] -s <names…> -a <agents> [-g] -y`). Before running, the app checks that the branch still points at the commit you previewed. Repositories are read through the GitHub API at a pinned commit. Set `GITHUB_TOKEN`, or log in with `gh`, for private repos or if you hit the anonymous rate limit.
+- **Discover** (the compass in the rail): search [skills.sh](https://skills.sh), or paste a GitHub repository or subdirectory URL (`mattpocock/skills`, `https://github.com/cursor/plugins/tree/main/pstack/skills`) to list every skill in it. Preview each skill's `SKILL.md` and files before installing. Executable scripts are flagged. Tick the skills you want (with nothing ticked, Install takes the skill on screen), pick the agents and a scope (global or a project folder), and install them through the `skills` CLI (`npx skills add <owner>/<repo>/<dir>[#ref] -s <names…> -a <agents> [-g] -y`). Install asks once, showing the command it will run. Before running, the app checks that the branch still points at the commit you previewed. Repositories are read through the GitHub API at a pinned commit. Set `GITHUB_TOKEN`, or log in with `gh`, for private repos or if you hit the anonymous rate limit.
 - Scans global skill directories for Claude Code, Codex, Cursor, Gemini CLI, Copilot, Windsurf, Kiro, OpenCode, Amp, Goose, Cline, Roo Code, the universal `.agents/skills` folder, and Claude Code plugins. Project folders can be added from the UI (or via `SKILLS_MANAGER_ROOTS`).
 - Skills that are symlinked into several agent directories are shown once, with every location listed.
 - Rendered `SKILL.md` (GitHub-flavoured markdown, syntax-highlighted code, collapsible frontmatter) with a heading outline, plus a file browser for everything else in the skill (scripts, references, assets). The file tree can be hidden to give a script or reference file the full width. Relative links in the markdown open the target file.
-- Update and remove commands sit in a **Commands** panel under the document, collapsed by default so the document keeps the space. Each one can be copied, or run after a confirmation step, and its output appears in a panel over the document. The server only runs commands it generated for that skill, one at a time, and refuses cross-origin requests. The **Info** tab explains how the skill was installed and whether it is current.
+- Update and remove commands sit in a **Commands** panel under the document, collapsed by default so the document keeps the space. Its **Remove** button is always visible: it opens a dialog showing the command it will run (and the alternatives, such as unlinking only, when there are several), and one click confirms. Each command in the panel can also be copied, or run through the same dialog. The command and then its output appear in a panel over the document. The server only runs commands it generated for that skill, one at a time, and refuses cross-origin requests. The **Info** tab explains how the skill was installed and whether it is current.
 - Install-method detection and tailored commands:
 
   | Detected as | How it's recognised | Remove | Update |
@@ -40,6 +40,7 @@ Nothing changes on disk until you confirm. Every install, update or remove shows
 - Light, dark and system theme.
 - Reading mode (the expand icon in the rail or tab strip, or `\`): hides the filters panel and the skill list so the document takes the width. Remembered across reloads; `/` brings the list back with the search box focused.
 - The heading outline sits beside the document on wide panes and opens as a popover on narrow ones.
+- **Command log** (the clock in the rail): every install, update and remove the app has run, newest first, with its command, full output, exit status and duration. It is kept in `~/.config/skills-manager/command-log.jsonl` (the newest 200 runs, each with the end of its output, up to about 32,000 characters).
 - Keyboard: `/` focuses search, `j`/`k` (or the arrow keys) move through the list, `\` toggles reading mode, `[` toggles the filters panel.
 
 ## Running

@@ -1,7 +1,9 @@
 import { spawn } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import path from 'node:path'
 import { INSTALL_AGENTS } from '../shared/agents.ts'
-import type { ActionResult, InstallRequest, RemoteSkill } from '../shared/types.ts'
+import type { InstallRequest, LogEntry, RemoteSkill } from '../shared/types.ts'
+import { log } from './commandLog.ts'
 import { shellQuote } from './util.ts'
 
 // The skills CLI detects when it runs inside an agent and then forces `-y` and its own `-a`. Keep in
@@ -71,38 +73,54 @@ export function installInvocations(req: InstallRequest, skills: RemoteSkill[], s
 
 let busy = false
 
-/** Runs one command at a time; output is stdout and stderr interleaved, capped. */
-export async function runExclusive(steps: { inv?: Invocation; shell?: { command: string; cwd?: string } }[]): Promise<ActionResult> {
+type Step = { inv?: Invocation; shell?: { command: string; cwd?: string } }
+
+/** Runs one command at a time and records it in the command log; output is stdout and stderr interleaved, capped. */
+export async function runExclusive(about: Pick<LogEntry, 'kind' | 'skills' | 'title'>, steps: Step[]): Promise<LogEntry> {
   if (busy) throw Object.assign(new Error('Another command is still running.'), { status: 409 })
   busy = true
+  const started = Date.now()
   const commands: string[] = []
   let output = ''
+  let ok = true
   try {
     for (const step of steps) {
       const display = step.inv ? displayCommand(step.inv) : step.shell!.command
       commands.push(display)
       output += `$ ${display}\n`
-      const { ok, out } = await spawnCapture(step)
-      output += out
-      if (!ok) return { ok: false, command: commands.join('\n'), output }
+      const res = await spawnCapture(step)
+      output += res.out
+      if (!res.ok) {
+        ok = false
+        break
+      }
     }
-    return { ok: true, command: commands.join('\n'), output }
+    const entry: LogEntry = { id: randomUUID(), ...about, ok, command: commands.join('\n'), output, startedAt: new Date(started).toISOString(), durationMs: Date.now() - started }
+    await log.append(entry).catch((e) => console.error('could not write the command log', e))
+    return entry
   } finally {
     busy = false
   }
 }
 
-function spawnCapture(step: { inv?: Invocation; shell?: { command: string; cwd?: string } }): Promise<{ ok: boolean; out: string }> {
+function spawnCapture(step: Step): Promise<{ ok: boolean; out: string }> {
   return new Promise((resolve) => {
     const child = step.inv
       ? spawn(step.inv.file, step.inv.args, { cwd: step.inv.cwd, env: cleanEnv(), stdio: ['ignore', 'pipe', 'pipe'], detached: true })
       : spawn('bash', ['-c', step.shell!.command], { cwd: step.shell!.cwd, env: cleanEnv(), stdio: ['ignore', 'pipe', 'pipe'], detached: true })
     let out = ''
-    const add = (b: Buffer) => {
-      if (out.length < MAX_OUTPUT) out += b.toString('utf8')
+    let dropped = false
+    // Keep the end, where a failure shows up.
+    const add = (s: string) => {
+      out += s
+      if (out.length > MAX_OUTPUT) {
+        out = out.slice(-MAX_OUTPUT)
+        dropped = true
+      }
     }
-    child.stdout.on('data', add)
-    child.stderr.on('data', add)
+    const text = () => (dropped ? '[earlier output omitted]\n' : '') + out
+    child.stdout.setEncoding('utf8').on('data', add)
+    child.stderr.setEncoding('utf8').on('data', add)
     const timer = setTimeout(() => {
       out += `\nTimed out after ${TIMEOUT_MS / 60000} minutes.\n`
       // Its own process group, so npx's and bash's children go too.
@@ -114,11 +132,11 @@ function spawnCapture(step: { inv?: Invocation; shell?: { command: string; cwd?:
     }, TIMEOUT_MS)
     child.on('error', (e) => {
       clearTimeout(timer)
-      resolve({ ok: false, out: out + `${e.message}\n` })
+      resolve({ ok: false, out: text() + `${e.message}\n` })
     })
     child.on('close', (code) => {
       clearTimeout(timer)
-      resolve({ ok: code === 0, out: out.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '') + (code ? `\nExited with code ${code}.\n` : '') })
+      resolve({ ok: code === 0, out: text().replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '') + (code ? `\nExited with code ${code}.\n` : '') })
     })
   })
 }

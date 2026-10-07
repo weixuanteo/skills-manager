@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { Hono } from 'hono'
 import type { FileContent, InstallRequest, RemoteSkill, ScanResult, Skill, UpdateStatus } from '../shared/types.ts'
 import { installInvocations, displayCommand, runExclusive } from './actions.ts'
+import { log } from './commandLog.ts'
 import { configPath, loadConfig, saveConfig } from './config.ts'
 import { GithubError, headSha, listedSkill, listedSkills, parseRepoInput, remoteFile, resolveRepo } from './github.ts'
 import { scanSkills } from './scanner.ts'
@@ -139,7 +140,8 @@ app.post('/api/skills/:id/run', async (c) => {
   // Only commands this server generated for the skill can run.
   const cmd = [...skill.install.updateCommands, ...skill.install.removeCommands].find((x) => x.command === body.command)
   if (!cmd) return c.json({ error: 'Not one of this skill\'s commands' }, 400)
-  const result = await runExclusive([{ shell: { command: cmd.command } }])
+  const kind = skill.install.removeCommands.includes(cmd) ? 'remove' : 'update'
+  const result = await runExclusive({ kind, skills: [skill.name], title: cmd.title }, [{ shell: { command: cmd.command } }])
   scanCache = undefined
   clearUpdateCache()
   return c.json(result)
@@ -184,10 +186,13 @@ app.post('/api/discover/install', async (c) => {
   if ((await headSha({ owner, repo, ref: req.ref })) !== sha) {
     return c.json({ error: 'The repository changed since you previewed it. Reload it and review the skills again.' }, 409)
   }
-  const result = await runExclusive(invocations.map((inv) => ({ inv })))
+  const about = { kind: 'install' as const, skills: (skills as RemoteSkill[]).map((s) => s.name), title: `Install from ${owner}/${repo}` }
+  const result = await runExclusive(about, invocations.map((inv) => ({ inv })))
   scanCache = undefined
   return c.json(result)
 })
+
+app.get('/api/log', async (c) => c.json({ entries: (await log.read()).reverse(), file: log.file }))
 
 app.get('/api/config', async (c) => {
   const cfg = await loadConfig()

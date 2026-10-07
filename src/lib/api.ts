@@ -1,4 +1,4 @@
-import type { ActionResult, AppConfig, FileContent, InstallRequest, RemoteRepo, ScanResult, SearchHit, UpdateStatus } from '@shared/types'
+import type { ActionResult, AppConfig, FileContent, InstallRequest, LogEntry, RemoteRepo, ScanResult, SearchHit, UpdateStatus } from '@shared/types'
 
 async function req<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { 'content-type': 'application/json', ...(init?.headers ?? {}) } })
@@ -29,7 +29,19 @@ export const api = {
   remoteFile: (r: { owner: string; repo: string; sha: string }, path: string) =>
     req<FileContent>(`/api/discover/file?${new URLSearchParams({ owner: r.owner, repo: r.repo, sha: r.sha, path })}`),
   install: (body: InstallRequest, dryRun = false) => req<ActionResult>('/api/discover/install', { method: 'POST', body: JSON.stringify({ ...body, dryRun }) }),
+  log: () => req<CommandLog>('/api/log'),
 }
+
+/** Newest run first; `file` is where the server keeps it. */
+export type CommandLog = { entries: LogEntry[]; file: string }
+export type LogResult = { log: CommandLog; error?: undefined } | { log?: undefined; error: string }
+
+/** Never rejects, so it can be read with `use()` without an error boundary. */
+export const loadLog = (): Promise<LogResult> =>
+  api.log().then(
+    (log) => ({ log }),
+    (e: Error) => ({ error: e.message }),
+  )
 
 export type FileResult = { file: FileContent; error?: undefined } | { file?: undefined; error: string }
 

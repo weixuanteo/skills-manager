@@ -233,3 +233,15 @@ export interface ActionResult {
   command: string
   output: string
 }
+
+/** One run in the command log. */
+export interface LogEntry extends ActionResult {
+  id: string
+  kind: 'install' | 'update' | 'remove'
+  /** Skills the run was started for. */
+  skills: string[]
+  /** The command's title, e.g. "Remove with the skills CLI", or the repository an install came from. */
+  title: string
+  startedAt: string
+  durationMs: number
+}

@@ -1,9 +1,10 @@
-import { Inbox, PanelLeftOpen, Search, TriangleAlert, X } from 'lucide-react'
-import { type ReactNode, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
+import { Inbox, Loader2, PanelLeftOpen, Search, TriangleAlert, X } from 'lucide-react'
+import { type ReactNode, startTransition, Suspense, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
 import { flushSync } from 'react-dom'
 import type { ActionResult, AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
 import { ActionPanel, type ActionState } from './components/ActionPanel'
 import { ClaudeIcon, CodexIcon } from './components/BrandIcons'
+import { CommandLog } from './components/CommandLog'
 import { Discover } from './components/discover/Discover'
 import { ProjectRootsDialog } from './components/ProjectRootsDialog'
 import { Rail } from './components/Rail'
@@ -13,7 +14,7 @@ import { SkillList } from './components/SkillList'
 import { StatusBar } from './components/StatusBar'
 import { usePersistedBool } from './hooks/usePersisted'
 import { useTheme } from './hooks/useTheme'
-import { api } from './lib/api'
+import { api, loadLog } from './lib/api'
 import {
   SOURCES,
   SOURCE_LABELS,
@@ -66,7 +67,7 @@ const firstScan = loadScan(false)
 
 const bump = <K,>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1)
 
-type Page = 'installed' | 'discover'
+export type Page = 'installed' | 'discover' | 'log'
 
 function syncUrl(skill: string | null, tab: Tab) {
   const url = new URL(location.href)
@@ -100,7 +101,13 @@ export default function App() {
     const t = new URLSearchParams(location.search).get('tab')
     return t === 'files' || t === 'info' ? t : 'readme'
   })
-  const [page, setPageState] = useState<Page>(() => (new URLSearchParams(location.search).get('view') === 'discover' ? 'discover' : 'installed'))
+  const [page, setPageState] = useState<Page>(() => {
+    const v = new URLSearchParams(location.search).get('view')
+    return v === 'discover' || v === 'log' ? v : 'installed'
+  })
+  const [logPromise, setLogPromise] = useState(() => (page === 'log' ? loadLog() : null))
+  // Read when a run finishes, which can be after the page changed; only setPage writes it.
+  const pageRef = useRef(page)
   const [action, setAction] = useState<ActionState | null>(null)
   const [rootsOpen, setRootsOpen] = useState(false)
   const [focus, setFocus] = usePersistedBool(FOCUS_KEY, false)
@@ -119,24 +126,25 @@ export default function App() {
 
   const setPage = (v: Page) => {
     setPageState(v)
+    pageRef.current = v
+    if (v === 'log') setLogPromise(loadLog())
     const url = new URL(location.href)
-    if (v === 'discover') url.searchParams.set('view', 'discover')
-    else {
-      url.searchParams.delete('view')
-      url.searchParams.delete('repo')
-    }
+    if (v === 'installed') url.searchParams.delete('view')
+    else url.searchParams.set('view', v)
+    if (v !== 'discover') url.searchParams.delete('repo')
     history.replaceState(null, '', url)
   }
 
-  /** Runs a mutating command on the server, then rescans so the lists reflect it. */
-  const runAction = async (label: string, fn: () => Promise<ActionResult>) => {
-    setAction({ label, running: true })
+  /** Runs a mutating command on the server, then rescans (and rereads the log, if it is open) to reflect it. */
+  const runAction = async (label: string, command: string, fn: () => Promise<ActionResult>) => {
+    setAction({ label, command, running: true })
     try {
-      setAction({ label, running: false, result: await fn() })
+      setAction({ label, command, running: false, result: await fn() })
     } catch (e) {
-      setAction({ label, running: false, error: (e as Error).message })
+      setAction({ label, command, running: false, error: (e as Error).message })
     }
     rescan()
+    if (pageRef.current === 'log') startTransition(() => setLogPromise(loadLog()))
   }
 
   const rescan = () =>
@@ -248,7 +256,7 @@ export default function App() {
     } else if (e.key === '\\') {
       e.preventDefault()
       setFocus(!focus)
-    } else if (page === 'discover') {
+    } else if (page !== 'installed') {
       return
     } else if (e.key === '[') {
       e.preventDefault()
@@ -281,7 +289,7 @@ export default function App() {
     <div className="h-full flex">
       <Rail
         page={page}
-        onToggleDiscover={() => setPage(page === 'discover' ? 'installed' : 'discover')}
+        onPage={setPage}
         onCheckUpdates={checkAll}
         checking={checking}
         updatesAvailable={updatesAvailable}
@@ -300,13 +308,23 @@ export default function App() {
         <Sidebar scan={scan} facets={facets} setFacets={setFacets} counts={view.counts} onManageRoots={() => setRootsOpen(true)} />
       )}
       <div className="relative flex-1 flex flex-col min-w-0 min-h-0">
-        {page === 'discover' && scan ? (
+        {page === 'log' && logPromise ? (
+          <Suspense
+            fallback={
+              <div className="flex-1 flex items-center justify-center text-[var(--fg-faint)]">
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            }
+          >
+            <CommandLog promise={logPromise} home={scan?.home ?? ''} focus={focus} />
+          </Suspense>
+        ) : page === 'discover' && scan ? (
           <Discover
             scan={scan}
             focus={focus}
             setFocus={setFocus}
             busy={!!action?.running}
-            onInstall={(req, label) => runAction(label, () => api.install(req))}
+            onInstall={(req, label, command) => runAction(label, command, () => api.install(req))}
             searchRef={searchRef}
           />
         ) : (
@@ -417,7 +435,7 @@ export default function App() {
                   focus={focus}
                   setFocus={setFocus}
                   busy={!!action?.running}
-                  onRun={(cmd) => runAction(cmd.title, () => api.run(selected.id, cmd.command))}
+                  onRun={(cmd) => runAction(`${cmd.title} · ${selected.name}`, cmd.command, () => api.run(selected.id, cmd.command))}
                 />
               ) : (
                 <div className="h-full flex flex-col items-center justify-center text-[var(--fg-faint)] gap-3">
@@ -433,8 +451,23 @@ export default function App() {
             </main>
           </div>
         )}
-        {action && <ActionPanel key={action.label + action.running} action={action} onClose={() => setAction(null)} />}
-        <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} discover={page === 'discover'} />
+        {action && (
+          <ActionPanel
+            key={action.label + action.running}
+            action={action}
+            onClose={() => setAction(null)}
+            onOpenLog={
+              page === 'log'
+                ? undefined
+                : () => {
+                    // The log shows this run in full, so the panel would only cover it.
+                    setAction(null)
+                    setPage('log')
+                  }
+            }
+          />
+        )}
+        <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} page={page} />
       </div>
       {rootsOpen && scan && <ProjectRootsDialog onClose={() => setRootsOpen(false)} onSaved={rescan} home={scan.home} />}
     </div>

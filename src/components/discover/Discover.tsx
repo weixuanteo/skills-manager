@@ -41,7 +41,7 @@ interface Props {
   focus: boolean
   setFocus: (v: boolean) => void
   busy: boolean
-  onInstall: (req: InstallRequest, label: string) => void
+  onInstall: (req: InstallRequest, label: string, command: string) => void
   searchRef: RefObject<HTMLInputElement | null>
 }
 
@@ -261,7 +261,7 @@ interface RepoModeProps {
   focus: boolean
   setFocus: (v: boolean) => void
   busy: boolean
-  onInstall: (req: InstallRequest, label: string) => void
+  onInstall: (req: InstallRequest, label: string, command: string) => void
 }
 
 /** Groups skills by their parent directory, minus the prefix every group shares. */

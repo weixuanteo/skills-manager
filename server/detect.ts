@@ -291,7 +291,8 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
       bun: `bun ${g ? 'add -g' : 'update'} ${pkg}@latest`,
     }
     const cd = !g && npm.projectRoot ? `cd ${t(npm.projectRoot)} && ` : ''
-    const removeCommands: Command[] = [...removeLinks]
+    // The package manager's command goes first, as the default when removing from the app.
+    const removeCommands: Command[] = []
     if (isNpx) {
       // Remove the whole _npx/<hash> cache entry, not just its package directory.
       const entryStart = realPath.indexOf('/_npx/') + '/_npx/'.length
@@ -309,6 +310,7 @@ export async function detectInstall(realPath: string, locations: SkillLocation[]
         note: 'Preferred: removes the package and its lockfile entry cleanly.',
       })
     }
+    removeCommands.push(...removeLinks)
     for (const l of dirLocs) {
       if (!isWithin(npm.packageRoot, l.path))
         removeCommands.push({ title: `Remove copy at ${tildify(l.path, home)}`, command: `rm -rf ${t(l.path)}`, danger: true })

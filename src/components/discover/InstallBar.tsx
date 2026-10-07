@@ -4,6 +4,7 @@ import { INSTALL_AGENTS } from '@shared/agents'
 import type { AgentId, InstallRequest, InstallScope, RemoteRepo, ScanResult } from '@shared/types'
 import { api } from '../../lib/api'
 import { tildify } from '../../lib/format'
+import { ConfirmDialog } from '../ConfirmDialog'
 
 const AGENTS_KEY = 'sm-install-agents'
 const SCOPE_KEY = 'sm-install-scope'
@@ -16,7 +17,7 @@ interface Props {
   previewDir: string
   scan: ScanResult
   busy: boolean
-  onInstall: (req: InstallRequest, label: string) => void
+  onInstall: (req: InstallRequest, label: string, command: string) => void
 }
 
 /** Agents with a global skills directory on this machine; Claude Code if there are none. */
@@ -44,7 +45,7 @@ export function InstallBar({ repo, picked: ticked, previewDir, scan, busy, onIns
     const stored = localStorage.getItem(SCOPE_KEY)
     return stored && scan.projectRoots.includes(stored) ? stored : 'global'
   })
-  const [prepared, setPrepared] = useState<{ command: string; req: InstallRequest; key: string } | null>(null)
+  const [prepared, setPrepared] = useState<{ command: string; req: InstallRequest; label: string; key: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [preparing, setPreparing] = useState(false)
 
@@ -55,17 +56,18 @@ export function InstallBar({ repo, picked: ticked, previewDir, scan, busy, onIns
   const present = new Set(defaultAgents(scan))
   const visible = INSTALL_AGENTS.filter((a) => showAll || present.has(a.id) || agents.includes(a.id))
   const scope: InstallScope = scopeKey === 'global' ? { kind: 'global' } : { kind: 'project', path: scopeKey }
-  // A prepared command goes stale once the picks, agents or scope change.
-  const confirmKey = [...picked, ...agents, scopeKey].join('\n')
-  const confirm = prepared?.key === confirmKey ? prepared : null
   const names = repo.skills.filter((s) => picked.includes(s.dir)).map((s) => s.name)
+  // A dry run that returns after the picks, agents or scope changed is for a different install.
+  const key = [...picked, ...agents, scopeKey].join('\n')
+  const confirm = prepared?.key === key ? prepared : null
 
   const prepare = async () => {
     const req: InstallRequest = { owner: repo.owner, repo: repo.repo, ref: repo.ref, sha: repo.sha, dirs: picked, agents, scope }
+    const label = `Install ${names.length === 1 ? names[0] : `${names.length} skills`}`
     setPreparing(true)
     setError(null)
     try {
-      setPrepared({ command: (await api.install(req, true)).command, req, key: confirmKey })
+      setPrepared({ command: (await api.install(req, true)).command, req, label, key })
     } catch (e) {
       setError((e as Error).message)
     } finally {
@@ -122,23 +124,17 @@ export function InstallBar({ repo, picked: ticked, previewDir, scan, busy, onIns
       </div>
       {error && <p className="border-t border-[var(--border)] px-3 py-1.5 text-red-600 dark:text-red-400">{error}</p>}
       {confirm && (
-        <div className="border-t border-[var(--border)] px-3 py-2 flex items-center gap-2">
-          <code className="flex-1 min-w-0 block font-mono text-xs bg-[var(--bg-sunken)] px-2 py-1.5 rounded whitespace-pre-wrap break-all">{confirm.command}</code>
-          <button type="button" className="btn btn-ghost h-7 px-2 text-xs" onClick={() => setPrepared(null)}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary h-7 px-2.5 text-xs"
-            disabled={busy}
-            onClick={() => {
-              onInstall(confirm.req, `Install ${names.length === 1 ? names[0] : `${names.length} skills`}`)
-              setPrepared(null)
-            }}
-          >
-            Run
-          </button>
-        </div>
+        <ConfirmDialog
+          title={`${confirm.label}?`}
+          verb="Install"
+          options={[{ title: confirm.label, command: confirm.command }]}
+          busy={busy}
+          onClose={() => setPrepared(null)}
+          onConfirm={() => {
+            setPrepared(null)
+            onInstall(confirm.req, confirm.label, confirm.command)
+          }}
+        />
       )}
     </section>
   )
