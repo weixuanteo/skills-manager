@@ -1,5 +1,5 @@
 import { Inbox, Loader2, PanelLeftOpen, Search, TriangleAlert, X } from 'lucide-react'
-import { type ReactNode, startTransition, Suspense, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
+import { type ReactNode, startTransition, Suspense, type TransitionStartFunction, use, useEffect, useEffectEvent, useMemo, useRef, useState, useTransition } from 'react'
 import { flushSync } from 'react-dom'
 import type { ActionResult, AgentId, InstallMethod, ScanResult, Scope, Skill, UpdateState, UpdateStatus } from '@shared/types'
 import { ActionPanel, type ActionState } from './components/ActionPanel'
@@ -9,7 +9,7 @@ import { Discover } from './components/discover/Discover'
 import { ProjectRootsDialog } from './components/ProjectRootsDialog'
 import { Rail } from './components/Rail'
 import { Sidebar } from './components/Sidebar'
-import { SkillDetail, type Tab } from './components/SkillDetail'
+import { type DetailHandle, SkillDetail, type Tab } from './components/SkillDetail'
 import { SkillList } from './components/SkillList'
 import { StatusBar } from './components/StatusBar'
 import { usePersistedBool } from './hooks/usePersisted'
@@ -67,6 +67,13 @@ const firstScan = loadScan(false)
 
 const bump = <K,>(m: Map<K, number>, k: K) => m.set(k, (m.get(k) ?? 0) + 1)
 
+/**
+ * An update status holds for the install it was checked against. Rescans keep it until that install changes
+ * (an update run here or in a terminal), and a check that finishes after such a rescan never applies.
+ */
+type Checked = { install: string; status: UpdateStatus }
+const installKey = (s: Skill) => JSON.stringify(s.install)
+
 export type Page = 'installed' | 'discover' | 'log'
 
 function syncUrl(skill: string | null, tab: Tab) {
@@ -82,8 +89,10 @@ export default function App() {
   const { theme, setTheme } = useTheme()
   const [scanPromise, setScanPromise] = useState(firstScan)
   const { scan, error: scanError } = use(scanPromise)
-  const [scanning, startScan] = useTransition()
-  const [updates, setUpdates] = useState<Record<string, UpdateStatus>>({})
+  const [reloading, startReload] = useTransition()
+  const lastReload = useRef(0)
+  const detailRef = useRef<DetailHandle>(null)
+  const [checked, setChecked] = useState<Record<string, Checked>>({})
   const [checkError, setCheckError] = useState<string | null>(null)
   const [checking, setChecking] = useState(false)
   const [checkingOne, setCheckingOne] = useState<string | null>(null)
@@ -143,21 +152,33 @@ export default function App() {
     } catch (e) {
       setAction({ label, command, running: false, error: (e as Error).message })
     }
-    rescan()
+    reload()
     if (pageRef.current === 'log') startTransition(() => setLogPromise(loadLog()))
   }
 
-  const rescan = () =>
-    startScan(() => {
+  /** Rescans and rereads the open document in one transition, so the current view stays up until both arrive. */
+  const reloadIn = (start: TransitionStartFunction) => {
+    lastReload.current = Date.now()
+    start(() => {
       setScanPromise(loadScan(true, scan))
-      setUpdates({})
+      detailRef.current?.reload()
     })
+  }
+  const reload = () => reloadIn(startReload)
+
+  const skills = scan?.skills ?? []
 
   const checkAll = async () => {
+    const installs = new Map(skills.map((s) => [s.id, installKey(s)]))
     setChecking(true)
     setCheckError(null)
     try {
-      setUpdates(await api.updates())
+      const next: Record<string, Checked> = {}
+      for (const [id, status] of Object.entries(await api.updates())) {
+        const install = installs.get(id)
+        if (install) next[id] = { install, status }
+      }
+      setChecked(next)
     } catch (e) {
       setCheckError((e as Error).message)
     } finally {
@@ -165,17 +186,25 @@ export default function App() {
     }
   }
 
-  const checkOne = async (id: string) => {
-    setCheckingOne(id)
+  const checkOne = async (skill: Skill) => {
+    const install = installKey(skill)
+    setCheckingOne(skill.id)
     try {
-      const u = await api.update(id)
-      setUpdates((prev) => ({ ...prev, [id]: u }))
+      const status = await api.update(skill.id)
+      setChecked((prev) => ({ ...prev, [skill.id]: { install, status } }))
     } finally {
       setCheckingOne(null)
     }
   }
 
-  const skills = scan?.skills ?? []
+  const updates = useMemo(() => {
+    const out: Record<string, UpdateStatus> = {}
+    for (const s of skills) {
+      const c = checked[s.id]
+      if (c?.install === installKey(s)) out[s.id] = c.status
+    }
+    return out
+  }, [skills, checked])
 
   /** Same-named skills get their plugin or install method as a suffix. */
   const subNames = useMemo(() => {
@@ -256,6 +285,9 @@ export default function App() {
     } else if (e.key === '\\') {
       e.preventDefault()
       setFocus(!focus)
+    } else if (e.key === 'r') {
+      e.preventDefault()
+      reload()
     } else if (page !== 'installed') {
       return
     } else if (e.key === '[') {
@@ -282,6 +314,23 @@ export default function App() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  // Returning from an editor or terminal shows what changed there, without a spinner since nobody asked.
+  // A running command rescans when it finishes; the throttle folds the focus and visibilitychange that arrive together.
+  const onReturn = useEffectEvent(() => {
+    if (document.visibilityState !== 'visible' || action?.running || Date.now() - lastReload.current < 1000) return
+    reloadIn(startTransition)
+  })
+
+  useEffect(() => {
+    const handler = () => onReturn()
+    window.addEventListener('focus', handler)
+    document.addEventListener('visibilitychange', handler)
+    return () => {
+      window.removeEventListener('focus', handler)
+      document.removeEventListener('visibilitychange', handler)
+    }
+  }, [])
+
   const updatesAvailable = Object.values(updates).filter((u) => u.state === 'update-available').length
   const error = scanError ?? checkError
 
@@ -293,8 +342,8 @@ export default function App() {
         onCheckUpdates={checkAll}
         checking={checking}
         updatesAvailable={updatesAvailable}
-        onRescan={rescan}
-        scanning={scanning}
+        onReload={reload}
+        reloading={reloading}
         onFolders={() => setRootsOpen(true)}
         sidebarOpen={sidebarOpen && !focus}
         onToggleSidebar={toggleSidebar}
@@ -425,11 +474,12 @@ export default function App() {
               {selected && scan ? (
                 <SkillDetail
                   key={selected.id}
+                  ref={detailRef}
                   skill={selected}
                   home={scan.home}
                   update={updates[selected.id]}
                   checking={checking || checkingOne === selected.id}
-                  onCheck={() => checkOne(selected.id)}
+                  onCheck={() => checkOne(selected)}
                   tab={tab}
                   setTab={setTab}
                   focus={focus}
@@ -469,7 +519,7 @@ export default function App() {
         )}
         <StatusBar scan={scan} shown={filtered.length} sourceKeys={view.segments.length > 1 ? view.segments.length : 0} page={page} />
       </div>
-      {rootsOpen && scan && <ProjectRootsDialog onClose={() => setRootsOpen(false)} onSaved={rescan} home={scan.home} />}
+      {rootsOpen && scan && <ProjectRootsDialog onClose={() => setRootsOpen(false)} onSaved={reload} home={scan.home} />}
     </div>
   )
 }

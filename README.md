@@ -35,13 +35,14 @@ Nothing changes on disk until you confirm. Every install, update or remove shows
   - git: `git ls-remote` against the tracked branch, no fetch, no working-tree changes
   - npm: installed version vs. the registry `latest`
   - `skills` CLI: latest upstream commit touching the skill's path (GitHub API) vs. the install time in the lockfile
+- Reloading: switching back to the app's window rereads the skill directories and the open file, so edits made in an editor or terminal show up on their own. The refresh button in the rail (or `r`) does the same on demand. Update check results survive a reload until that skill's install changes (a new commit, version or lockfile entry).
 - Codex's bundled skills (`~/.codex/skills/.system`) are hidden by default. Pick the "Built-ins" quick filter above the list, flip the "Hide Codex built-ins" switch in the filters panel, or click "show" in the status bar to see them. The choice is remembered.
 - Quick filters above the list (All, Attention, Symlinked, Plugins, Built-ins); the full filters (agent, scope, install method, update status) and the scanned locations open from the rail or with `[`.
 - Light, dark and system theme.
 - Reading mode (the expand icon in the rail or tab strip, or `\`): hides the filters panel and the skill list so the document takes the width. Remembered across reloads; `/` brings the list back with the search box focused.
 - The heading outline sits beside the document on wide panes and opens as a popover on narrow ones.
 - **Command log** (the clock in the rail): every install, update and remove the app has run, newest first, with its command, full output, exit status and duration. It is kept in `~/.config/skills-manager/command-log.jsonl` (the newest 200 runs, each with the end of its output, up to about 32,000 characters).
-- Keyboard: `/` focuses search, `j`/`k` (or the arrow keys) move through the list, `\` toggles reading mode, `[` toggles the filters panel.
+- Keyboard: `/` focuses search, `j`/`k` (or the arrow keys) move through the list, `\` toggles reading mode, `[` toggles the filters panel, `r` reloads from disk.
 
 ## Running
 

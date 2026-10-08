@@ -46,6 +46,9 @@ export function StatusBar({ scan, shown, sourceKeys, page }: Props) {
         <span>
           <kbd className="kbd">\</kbd> reading mode
         </span>
+        <span>
+          <kbd className="kbd">r</kbd> reload
+        </span>
       </span>
     </div>
   )

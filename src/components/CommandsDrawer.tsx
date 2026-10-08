@@ -1,4 +1,4 @@
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, Play, RefreshCw, Terminal, Trash2, TriangleAlert } from 'lucide-react'
+import { ArrowUpCircle, Check, ChevronDown, ChevronUp, Copy, Loader2, Play, Terminal, Trash2, TriangleAlert } from 'lucide-react'
 import { type ComponentProps, useState } from 'react'
 import type { Command, Skill, UpdateStatus } from '@shared/types'
 import { usePersistedBool } from '../hooks/usePersisted'
@@ -17,7 +17,7 @@ interface Props {
 }
 
 function stateText(skill: Skill, update: UpdateStatus | undefined, checking: boolean): { text: string; className: string } {
-  if (checking && !update) return { text: 'checking…', className: 'text-[var(--fg-muted)]' }
+  if (checking && !update) return { text: 'checking for updates…', className: 'text-[var(--fg-muted)]' }
   switch (update?.state) {
     case 'update-available':
       return { text: `${update.latest ?? 'update'} available`, className: 'text-amber-700 dark:text-amber-400 font-medium' }
@@ -26,9 +26,11 @@ function stateText(skill: Skill, update: UpdateStatus | undefined, checking: boo
     case 'local-ahead':
       return { text: 'local ahead of remote', className: 'text-sky-700 dark:text-sky-400' }
     case 'error':
-      return { text: 'check failed', className: 'text-red-700 dark:text-red-400' }
+      return { text: 'update check failed', className: 'text-red-700 dark:text-red-400' }
+    case 'unknown':
+      return { text: 'update status unknown', className: 'text-[var(--fg-muted)]' }
     default:
-      return { text: skill.install.updateCheckable && update?.state !== 'unsupported' ? 'not checked' : 'not checkable', className: 'text-[var(--fg-faint)]' }
+      return { text: skill.install.updateCheckable && update?.state !== 'unsupported' ? 'updates not checked' : 'no update check', className: 'text-[var(--fg-faint)]' }
   }
 }
 
@@ -90,8 +92,8 @@ export function CommandsDrawer({ skill, update, checking, onCheck, busy, onRun }
         </button>
         {install.updateCheckable && (
           <button type="button" className="btn btn-ghost h-7 px-2 text-xs text-[var(--fg-muted)]" onClick={onCheck} disabled={checking} title={install.updateCheckHint}>
-            {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            {checking ? 'Checking…' : 'Check now'}
+            {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpCircle className="h-3.5 w-3.5" />}
+            {checking ? 'Checking…' : 'Check for updates'}
           </button>
         )}
         {install.removeCommands.length > 0 && (

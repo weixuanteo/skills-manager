@@ -8,8 +8,8 @@ interface Props {
   onCheckUpdates: () => void
   checking: boolean
   updatesAvailable: number
-  onRescan: () => void
-  scanning: boolean
+  onReload: () => void
+  reloading: boolean
   onFolders: () => void
   sidebarOpen: boolean
   onToggleSidebar: () => void
@@ -30,7 +30,7 @@ const PAGES: { id: Page; Icon: typeof Library; title: string }[] = [
   { id: 'log', Icon: History, title: 'Command log: every install, update and remove run from here' },
 ]
 
-export function Rail({ page, onPage, onCheckUpdates, checking, updatesAvailable, onRescan, scanning, onFolders, sidebarOpen, onToggleSidebar, filtersActive, focus, onToggleFocus, theme, setTheme }: Props) {
+export function Rail({ page, onPage, onCheckUpdates, checking, updatesAvailable, onReload, reloading, onFolders, sidebarOpen, onToggleSidebar, filtersActive, focus, onToggleFocus, theme, setTheme }: Props) {
   const ThemeIcon = theme === 'light' ? Sun : theme === 'dark' ? Moon : Monitor
   return (
     <nav className="w-11 shrink-0 border-r border-[var(--border)] bg-[var(--bg-elev)] flex flex-col items-center py-2 gap-1" aria-label="Main">
@@ -43,7 +43,7 @@ export function Rail({ page, onPage, onCheckUpdates, checking, updatesAvailable,
         </button>
       ))}
       <span className="my-1 h-px w-5 bg-[var(--border)]" aria-hidden="true" />
-      <button type="button" className="rail-btn" onClick={onCheckUpdates} disabled={checking || scanning} title="Check every skill for updates">
+      <button type="button" className="rail-btn" onClick={onCheckUpdates} disabled={checking || reloading} title="Check every skill for updates">
         <ArrowUpCircle className={`h-4 w-4 ${checking ? 'animate-pulse' : ''}`} />
         {updatesAvailable > 0 && <span className="absolute top-1 right-1 h-1.5 w-1.5 rounded-full bg-amber-500" aria-label={`${updatesAvailable} updates available`} />}
       </button>
@@ -58,8 +58,8 @@ export function Rail({ page, onPage, onCheckUpdates, checking, updatesAvailable,
       <button type="button" className={`rail-btn ${focus ? 'on' : ''}`} onClick={onToggleFocus} aria-pressed={focus} title={`${focus ? 'Exit' : 'Enter'} reading mode (\\)`}>
         {focus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
       </button>
-      <button type="button" className="rail-btn" onClick={onRescan} disabled={scanning} title="Rescan skill directories">
-        <RefreshCw className={`h-4 w-4 ${scanning ? 'animate-spin' : ''}`} />
+      <button type="button" className="rail-btn" onClick={onReload} disabled={reloading} title="Reload skills and the open file from disk (r). Also happens when you switch back to this window.">
+        <RefreshCw className={`h-4 w-4 ${reloading ? 'animate-spin' : ''}`} />
       </button>
       <button type="button" className="rail-btn" onClick={() => setTheme(NEXT_THEME[theme])} title={`Theme: ${THEME_LABEL[theme]}. Click for ${THEME_LABEL[NEXT_THEME[theme]]}.`}>
         <ThemeIcon className="h-4 w-4" />

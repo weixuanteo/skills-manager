@@ -1,5 +1,5 @@
-import { BookOpen, FileWarning, FolderTree, Info, Maximize2, Minimize2, RefreshCw } from 'lucide-react'
-import { Suspense, use, useState, useTransition } from 'react'
+import { BookOpen, FileWarning, FolderTree, Info, Maximize2, Minimize2 } from 'lucide-react'
+import { type Ref, Suspense, use, useImperativeHandle, useState } from 'react'
 import type { Command, Skill, UpdateStatus } from '@shared/types'
 import { loadFile, type FileResult } from '../lib/api'
 import { formatBytes, timeAgo, tildify } from '../lib/format'
@@ -13,6 +13,11 @@ import { MarkdownDocument } from './MarkdownDocument'
 
 export type Tab = 'readme' | 'files' | 'info'
 
+export interface DetailHandle {
+  /** Rereads SKILL.md and the open file. Call it inside a transition to keep the current document until they arrive. */
+  reload: () => void
+}
+
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'readme', label: 'SKILL.md', icon: <BookOpen className="h-3.5 w-3.5" /> },
   { id: 'files', label: 'Files', icon: <FolderTree className="h-3.5 w-3.5" /> },
@@ -20,6 +25,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
 ]
 
 interface Props {
+  ref?: Ref<DetailHandle>
   skill: Skill
   home: string
   update?: UpdateStatus
@@ -103,12 +109,11 @@ function Readme({ content, frontmatter, header, onOpenRelative }: { content: Pro
   )
 }
 
-export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTab, focus, setFocus, busy, onRun }: Props) {
+export function SkillDetail({ ref, skill, home, update, checking, onCheck, tab, setTab, focus, setFocus, busy, onRun }: Props) {
   const readmePath = skill.skillFile.slice(skill.realPath.length + 1) || 'SKILL.md'
   // File contents are promises read with `use()`; this component remounts per skill (keyed by id).
   const [readme, setReadme] = useState(() => loadFile(skill.id, readmePath))
   const [file, setFile] = useState<OpenFile>(() => ({ path: readmePath, content: readme }))
-  const [reloading, startReload] = useTransition()
 
   const openFile = (path: string) => setFile({ path, content: loadFile(skill.id, path) })
   const openRelative = (p: string) => {
@@ -116,16 +121,14 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
     setTab('files')
   }
 
-  // A transition keeps the current document (and its scroll position) on screen until the re-read resolves.
-  const reload = () => {
-    if (tab === 'readme') {
+  // App reloads these with each rescan. Both are reread, whichever tab is showing, so switching tabs never shows stale contents.
+  useImperativeHandle(ref, () => ({
+    reload: () => {
       const next = loadFile(skill.id, readmePath)
-      startReload(() => setReadme(next))
-    } else if (tab === 'files') {
-      const next = loadFile(skill.id, file.path)
-      startReload(() => setFile({ path: file.path, content: next }))
-    }
-  }
+      setReadme(next)
+      setFile({ path: file.path, content: file.path === readmePath ? next : loadFile(skill.id, file.path) })
+    },
+  }))
 
   const loc = skill.locations[0]
   const crumb = loc ? tildify(loc.path, home) + (loc.isSymlink && loc.linkTarget ? ` → ${tildify(loc.linkTarget, home)}` : '') : tildify(skill.realPath, home)
@@ -156,11 +159,6 @@ export function SkillDetail({ skill, home, update, checking, onCheck, tab, setTa
           </span>
           <CopyButton text={skill.realPath} className="h-7 w-7 text-[var(--fg-faint)]" />
         </span>
-        {tab !== 'info' && (
-          <button type="button" className="btn btn-ghost btn-icon h-7 w-7 text-[var(--fg-muted)]" onClick={reload} disabled={reloading} title="Reload this file from disk">
-            <RefreshCw className={`h-4 w-4 ${reloading ? 'animate-spin' : ''}`} />
-          </button>
-        )}
         <button type="button" className="btn btn-ghost btn-icon h-7 w-7 text-[var(--fg-muted)]" onClick={() => setFocus(!focus)} title={focus ? 'Exit reading mode (\\)' : 'Reading mode: hide the list and filters (\\)'}>
           {focus ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
         </button>

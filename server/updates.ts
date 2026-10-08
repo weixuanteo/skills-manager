@@ -7,18 +7,23 @@ type Status = Omit<UpdateStatus, 'skillId'>
 const TTL_MS = 5 * 60 * 1000
 const cache = new Map<string, { at: number; value: unknown }>()
 const inflight = new Map<string, Promise<unknown>>()
+// Bumped by clearUpdateCache, so a lookup that started before a clear can't refill the cache after it.
+let generation = 0
 
 function lookup<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const c = cache.get(key)
   if (c && Date.now() - c.at < TTL_MS) return Promise.resolve(c.value as T)
   const existing = inflight.get(key)
   if (existing) return existing as Promise<T>
-  const p = fn()
+  const gen = generation
+  const p: Promise<T> = fn()
     .then((value) => {
-      cache.set(key, { at: Date.now(), value })
+      if (gen === generation) cache.set(key, { at: Date.now(), value })
       return value
     })
-    .finally(() => inflight.delete(key))
+    .finally(() => {
+      if (inflight.get(key) === p) inflight.delete(key)
+    })
   inflight.set(key, p)
   return p
 }
@@ -176,4 +181,6 @@ export async function checkUpdate(skill: Skill): Promise<UpdateStatus> {
 
 export function clearUpdateCache() {
   cache.clear()
+  inflight.clear()
+  generation++
 }
